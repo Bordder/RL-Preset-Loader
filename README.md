@@ -9,7 +9,7 @@ explosion and paint finishes for blue and orange. You can queue up one preset or
 > **This is not an item giver or an item swapper.** It can only use items that are already in
 > your inventory. All it does is build presets in your garage out of what you own.
 
-Still being worked on. There's no release yet.
+Still being worked on. There's no release yet. I will continue updating the presets database when I can.
 
 ## Features
 
