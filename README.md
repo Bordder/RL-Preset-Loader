@@ -51,7 +51,7 @@ You need Windows 10 or 11 and [Python 3](https://www.python.org/downloads/).
 4. Press **Scan inventory** once (about 3 minutes)
 5. Pick your presets and press **Add to garage**
 
-A preset takes about 25–35 seconds.
+A preset takes about 25–30 seconds.
 
 ## Updating the preset list
 

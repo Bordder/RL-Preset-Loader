@@ -11,6 +11,9 @@ PRESET_TITLE_REGION = (0.07, 0.48, 0.27, 0.535)
 PRESET_PREV_ARROW = (0.0685, 0.507)
 PRESET_NEXT_ARROW = (0.265, 0.507)
 PRESET_RENAME_PENCIL = (0.230, 0.602)
+# Garage buttons, used when the text reader misses their labels (seen live). Measured at 2560x1440.
+CUSTOMIZE_CAR_BUTTON = (0.123, 0.557)
+CREATE_PRESET_BUTTON = (0.123, 0.601)
 # The preset DELETE bin sits right of the pencil. The app refuses to click anywhere in this box
 # while on the garage screen, except from the "Clear all presets" job after the user confirmed it.
 DELETE_BIN_ZONE = (0.244, 0.570, 0.275, 0.635)
@@ -45,24 +48,16 @@ BADGE_ABOVE_NAME = 0.040        # paint badge strip, read separately with contra
 BADGE_BELOW_NAME = 0.010
 GRID_SCROLL_POINT = (0.20, 0.60)
 
-# Paint finish tab: the four finish buttons
-FINISH_BUTTONS = {
-    ("blue", "primary"): (0.2561, 0.3096),
-    ("blue", "accent"): (0.2561, 0.3471),
-    ("orange", "primary"): (0.2561, 0.4444),
-    ("orange", "accent"): (0.2561, 0.4822),
-}
+# Paint finish tab
 FINISH_LIST_REGION = (0.200, 0.280, 0.335, 0.860)  # accent list opens lower than primary
 FINISH_LIST_SCROLL_POINT = (0.265, 0.55)
 
 # Colour swatches left of the finish buttons. Clicking one opens a grid of squares just below it:
 # 10 x 7 for primary (team hues), 15 x 7 for accent. The sheet's colour pictures are the same grids.
-COLOUR_SWATCHES = {
-    ("blue", "primary"): (0.166, 0.3096),
-    ("blue", "accent"): (0.166, 0.3471),
-    ("orange", "primary"): (0.166, 0.4444),
-    ("orange", "accent"): (0.166, 0.4822),
-}
+# Their rows are found on screen (paint_rows) because some decals remove the ACCENT rows.
+PAINT_ROWS_REGION = (0.06, 0.26, 0.34, 0.56)
+COLOUR_SWATCH_X = 0.166
+FINISH_BUTTON_X = 0.2561
 COLOUR_GRID_LEFT = 0.1355
 COLOUR_GRID_TOP_BELOW_SWATCH = 0.0213
 COLOUR_CELL = (0.01418, 0.0255)  # width, height of one square

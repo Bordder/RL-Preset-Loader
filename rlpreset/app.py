@@ -17,7 +17,7 @@ from . import catalog, game, garage, inputs, store
 
 UI_DIR = pathlib.Path(__file__).resolve().parent / "ui"
 EXPECTED_ASPECT = 16 / 9
-SECONDS_PER_PRESET = 25
+SECONDS_PER_PRESET = 28  # measured live on 20+ presets after the speed work
 SECONDS_PER_SCAN_ITEM = 2
 SECONDS_PER_GARAGE_PRESET = 0.8  # reading the garage list, measured live
 # A garage list read this recently (in this session) is trusted instead of reading it again.
@@ -175,6 +175,7 @@ class Api:
             progress(title, 0)
             if not game.focus(hwnd):
                 raise garage.NavigationError("Couldn't bring Rocket League to the front. Click the game, then try again.")
+            inputs.set_target_window(hwnd)
             g = garage.Garage(hwnd, lambda text: None, garage.Options(), store.load("inventory"))
             result.update(job(g, progress) or {})
         except inputs.Aborted as e:
@@ -185,6 +186,7 @@ class Api:
             result["error"] = f"{type(e).__name__}: {e}"
         finally:
             result["seconds"] = round(time.monotonic() - started)
+            inputs.set_target_window(None)
             self._mini(False)
             self._job.update(running=False, result=result)
 

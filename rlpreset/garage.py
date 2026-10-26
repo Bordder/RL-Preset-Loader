@@ -70,6 +70,8 @@ class Garage:
         self.owned = {slot: [tuple(i) for i in items] for slot, items in ((inventory or {}).get("items") or {}).items()}
         # Paint finishes the user owns, per list ("primary" / "accent").
         self.finishes = dict((inventory or {}).get("finishes") or {})
+        self._paint_rows = None  # {(team, part): y} on the paint finish tab, read when there
+        self.forget_search_state()
 
     # ---------- screen helpers ----------
 
@@ -223,12 +225,12 @@ class Garage:
         """Always work in a brand-new preset, so the user's own presets are never touched."""
         words = self.go_to_garage()
         button = screen.find_text(words, "CREATE NEW PRESET")
-        if not button:
-            raise NavigationError("Couldn't find CREATE NEW PRESET")
+        # The reader sometimes misses this label; the result is checked below either way.
+        point = button.center if button else layout.CREATE_PRESET_BUTTON
         before = self.preset_title()
         for _ in range(2):  # one retry in case the click didn't register
             title_before = self.snapshot(layout.PRESET_TITLE_REGION)
-            self.click(button.center)
+            self.click(point)
             self.wait_settled(layout.PRESET_TITLE_REGION, before=title_before, timeout=2.0)
             after = self.preset_title()
             if after != before and screen.normalize(after).startswith("preset"):
@@ -274,13 +276,10 @@ class Garage:
         inputs.press("end")
         inputs.clear_text(len(current) + 4)
         inputs.type_text(name)
-        self.wait(0.15)
-        self.grab()
-        ok = screen.find_text(self.read(layout.DIALOG_REGION), "OK", min_score=0.5)
-        if ok:
-            self.click(ok.center)
-        else:
-            inputs.press("enter")
+        self.wait(0.05)
+        # Enter confirms the name (tested live). Reading the OK button was slower and sometimes
+        # matched the wrong word, so it isn't used.
+        inputs.press("enter")
         self.wait(0.4)
         self.grab()
         dialog = self.read(layout.DIALOG_REGION)
@@ -364,8 +363,8 @@ class Garage:
             no = screen.find_text(buttons, "NO") or screen.find_text(dialog, "CANCEL")
             if no:
                 self.click(no.center, wait=0.4)
-            else:
-                inputs.press("esc")
+            elif dialog:
+                inputs.press("esc")  # something is open; with nothing open, Esc would mean BACK
                 self.wait(0.4)
             self.log(f"No delete prompt for '{title}': {' '.join(w.text for w in dialog) or 'nothing showed up'}")
             return None
@@ -393,17 +392,18 @@ class Garage:
     def open_customize(self):
         words = self.go_to_garage()
         button = screen.find_text(words, "CUSTOMIZE CAR")
-        if not button:
-            raise NavigationError("Couldn't find CUSTOMIZE CAR")
-        self.click(button.center)
+        self.click(button.center if button else layout.CUSTOMIZE_CAR_BUTTON)
+        self.forget_search_state()
         where, _ = self.wait_for_screen("customize")
         if where != "customize":
             raise NavigationError("CUSTOMIZE CAR didn't open")
 
     # ---------- customize screen ----------
 
-    def current_tab(self):
-        words = self.read(layout.PANEL_TITLE_REGION)
+    def current_tab(self, fresh=False):
+        """Which tab is open, from the panel title. fresh=True captures just the title (faster than a
+        full screenshot, used while waiting for a tab to change)."""
+        words = self.read_now(layout.PANEL_TITLE_REGION) if fresh else self.read(layout.PANEL_TITLE_REGION)
         for key, titles in layout.TABS:
             for title in titles:
                 for w in words:
@@ -415,6 +415,10 @@ class Garage:
         order = [k for k, _ in layout.TABS]
         self.grab()
         current = self.current_tab()
+        if current is None and self.which_screen()[0] != "customize":
+            # Never click the tab arrows anywhere else: on other screens they could hit anything.
+            path = self.save_debug(f"tab_{key}_not_customize")
+            raise NavigationError(f"Not on the customize screen. Screenshot saved: {path}")
         for _ in range(len(order) + 4):
             if current == key:
                 return
@@ -427,11 +431,18 @@ class Garage:
             end = time.monotonic() + 1.5 * self.opt.speed
             previous = current
             while time.monotonic() < end:
-                inputs.sleep(0.05)
-                self.grab()
-                current = self.current_tab()
+                inputs.sleep(0.03)
+                current = self.current_tab(fresh=True)
                 if current and current != previous:
+                    # The title changes as the strip starts sliding; a click before it stops is lost.
+                    inputs.sleep(0.12)
                     break
+            self._frame = None
+            if current is None:
+                self.grab()
+                if self.which_screen()[0] != "customize":
+                    path = self.save_debug(f"tab_{key}_left_customize")
+                    raise NavigationError(f"Left the customize screen while switching tabs. Screenshot saved: {path}")
         path = self.save_debug(f"tab_{key}")
         raise NavigationError(f"Couldn't open the {key} tab. Screenshot saved: {path}")
 
@@ -445,9 +456,14 @@ class Garage:
         elif not screen.find_text(words, f"VIEW {'ORANGE' if team == 'blue' else 'BLUE'} CAR"):
             self.log("  couldn't find the view-team button, staying on the current team")
 
+    def forget_search_state(self):
+        """Called when entering the customize screen: re-check the filter panel and search box once."""
+        self._search_text = None  # None = unknown
+
     def open_filters(self):
-        """Make sure the filter panel (with the search box) is open. Always checked on screen:
-        clicking the search box spot while the panel is closed would hit an item tile instead."""
+        """Make sure the filter panel (with the search box) is open. Checked on screen before EVERY
+        search (~0.13s): clicking the search box spot while the panel is closed hits an item tile.
+        Seen live: the panel closes after the body changes or after visiting the paint finish tab."""
         buttons = self.read_now(layout.FILTER_BUTTON_REGION)
         if screen.find_text(buttons, "HIDE FILTERS"):
             return
@@ -457,22 +473,44 @@ class Garage:
         self.wait_settled(layout.SEARCH_TEXT_REGION, min_wait=0.12, timeout=1.5)
         if not screen.find_text(self.read_now(layout.FILTER_BUTTON_REGION), "HIDE FILTERS"):
             raise NavigationError("The filter panel didn't open")
+        self._search_text = None  # the panel was closed, so don't trust what we think is typed
 
     def search(self, text):
         """Type into the item search box. The filter panel stays open: the grid rows don't move,
-        and the top row's names and paint badges are still readable below it (tested live)."""
+        and the top row's names and paint badges are still readable below it (tested live).
+        The old search is erased with Backspace rather than CLEAR FILTERS: that way the grid only
+        reloads once, for the new search."""
         self.open_filters()
+        if not text and self._search_text == "":
+            return
         before = self.snapshot(layout.GRID_REGION)
-        clear = screen.find_text(self.read_now(layout.CLEAR_FILTERS_REGION), "CLEAR FILTERS")
-        if clear:
-            x0, y0 = layout.CLEAR_FILTERS_REGION[:2]
-            w, h = self.size
-            self.click((x0 + clear.center[0] / w, y0 + clear.center[1] / h))  # empties the search (tested live)
-            self.wait(0.1)
-        if text:
+        if self._search_text is None:
+            # Unknown: read the box to see how much to erase (the caret can add a stray character).
+            old = " ".join(w.text for w in self.read_now(layout.SEARCH_TEXT_REGION))
+            erase = len(old) + 3 if old else 0
+        else:
+            erase = len(self._search_text) + 2 if self._search_text else 0
+        if text or erase:
             self.click(layout.SEARCH_BOX)
+            if erase:
+                inputs.press("end")
+                inputs.clear_text(erase)
             inputs.type_text(text)
-        self.wait_settled(layout.GRID_REGION, before=before if (text or clear) else None, min_wait=0.15)
+        self._search_text = text
+        self.wait_settled(layout.GRID_REGION, before=before, min_wait=0.15)
+        if text and not self._results_match(text):
+            self.wait_settled(layout.GRID_REGION, min_wait=0.3, timeout=1.5)
+
+    def _results_match(self, text):
+        """Quick check that the grid shows search results: the first tile's name shares a word with
+        the search (or the grid is empty, meaning nothing matched)."""
+        x, y = layout.GRID_COLUMNS_X[0], layout.GRID_ROWS_NAME_Y[0]
+        region = (x - layout.TILE_HALF_WIDTH, y - layout.TILE_TEXT_ABOVE_NAME,
+                  x + layout.TILE_HALF_WIDTH, y + layout.TILE_TEXT_BELOW_NAME)
+        first = screen.normalize(" ".join(w.text for w in self.read_now(region)))
+        if not first:
+            return True
+        return any(word in first for word in screen.normalize(text).split() if len(word) > 2)
 
     def read_tiles(self):
         """Read each visible tile: its name, and its paint badge (read separately with a contrast
@@ -544,8 +582,9 @@ class Garage:
         menu = self.read((x - 0.02, y - 0.01, x + 0.12, y + 0.09))
         choice = screen.find_text(menu, f"Equip To {team_only.title()}", min_score=0.75)
         if not choice:
-            inputs.press("esc")  # close the menu
-            self.wait(0.2)
+            if menu:
+                inputs.press("esc")  # close the menu (with no menu open, Esc would mean BACK)
+                self.wait(0.2)
             return False
         self.click(choice.center)
         self.wait(0.15)
@@ -554,7 +593,12 @@ class Garage:
     def find_and_click(self, name, paint, team_only=None):
         """Search for the item and click it. Returns the tile, or None if it isn't owned."""
         if screen.normalize(name) == "none":
-            # "None" can't be searched for; it's always the first tile of the full list.
+            # "None" can't be searched for, but it's the first tile of every decal list, search
+            # results included (seen live). Use it if it's already showing, else empty the search.
+            self.grab()
+            tile = self.pick_tile(self.read_tiles()[:1], "None", None)
+            if tile:
+                return tile if self.click_tile(tile, team_only) else None
             self.search("")
             inputs.scroll(*self.to_screen(layout.GRID_SCROLL_POINT), 40)
             self.park_mouse()
@@ -600,12 +644,36 @@ class Garage:
 
     # ---------- paint finishes ----------
 
+    def paint_rows(self):
+        """Where each PRIMARY / ACCENT row sits on the paint finish tab: {(team, part): y}.
+        Read from the screen because the layout changes: decals with their own finish have no
+        ACCENT rows, and the orange rows move up (seen live)."""
+        self.grab()
+        words = self.read(layout.PAINT_ROWS_REGION)
+        primary = sorted(w.center[1] for w in words if screen.similarity(w.text, "PRIMARY") >= 0.8)
+        accent = sorted(w.center[1] for w in words if screen.similarity(w.text, "ACCENT") >= 0.8)
+        rows = dict(zip([("blue", "primary"), ("orange", "primary")], primary))
+        for y in accent:
+            # An accent row belongs to the primary row just above it.
+            above = [(team, py) for (team, _), py in rows.items() if _ == "primary" and py < y]
+            if above:
+                rows[(max(above, key=lambda t: t[1])[0], "accent")] = y
+        self._paint_rows = rows
+        return rows
+
     def open_finish_list(self, team, part):
-        self.click(layout.FINISH_BUTTONS[(team, part)])
+        """Open the finish list for one row. False if the row isn't there or the list didn't open."""
+        y = (self._paint_rows or self.paint_rows()).get((team, part))
+        if y is None:
+            return False
+        self.click((layout.FINISH_BUTTON_X, y))
         self.wait_settled(layout.FINISH_LIST_REGION, min_wait=0.2)
+        if not self.finish_list_open():
+            return False  # e.g. a decal that sets its own finish: the button does nothing
         inputs.scroll(*self.to_screen(layout.FINISH_LIST_SCROLL_POINT), 25)  # to the top
         self.park_mouse()
         self.wait_settled(layout.FINISH_LIST_REGION, min_wait=0.15)
+        return True
 
     def finish_list_open(self):
         """The open list shows a column of different finish names; the closed tab shows at most the
@@ -618,11 +686,10 @@ class Garage:
         if part not in self.finishes:
             for _ in range(3):
                 # Right after switching tabs the first click can get lost, so check the list opened.
-                self.open_finish_list("blue", part)
-                if self.finish_list_open():
+                if self.open_finish_list("blue", part):
                     break
-                inputs.press("esc")
-                self.wait(0.5)
+                self.wait(0.5)  # no Esc: the list isn't open, so Esc would leave the customize screen
+                self._paint_rows = None
             else:
                 raise NavigationError(f"Couldn't open the {part} paint finish list")
             names, scroll_at = [], self.to_screen(layout.FINISH_LIST_SCROLL_POINT)
@@ -653,7 +720,8 @@ class Garage:
         if self.opt.skip_unchanged and self.equipped[team].get(key) == screen.normalize(match):
             return ("already" if outcome == "set" else outcome), match
 
-        self.open_finish_list(team, part)
+        if not self.open_finish_list(team, part):
+            return "skipped", None  # the decal sets its own finish
         scroll_at = self.to_screen(layout.FINISH_LIST_SCROLL_POINT)
         for _ in range(10):
             self.grab()
@@ -680,29 +748,73 @@ class Garage:
         label = f"square {want[0] + 1},{want[1] + 1}"
         if self.opt.skip_unchanged and self.equipped[team].get(key) == want:
             return "already", label
-        swatch = layout.COLOUR_SWATCHES[(team, part)]
+        y = (self._paint_rows or self.paint_rows()).get((team, part))
+        if y is None:
+            return "skipped", None  # this decal has no such colour (e.g. no accent)
+        swatch = (layout.COLOUR_SWATCH_X, y)
         cell_w, cell_h = layout.COLOUR_CELL
         top = swatch[1] + layout.COLOUR_GRID_TOP_BELOW_SWATCH
         rows, cols = layout.COLOUR_GRID_ROWS, layout.COLOUR_GRID_COLUMNS[part]
         grid = (layout.COLOUR_GRID_LEFT, top, layout.COLOUR_GRID_LEFT + cols * cell_w, top + rows * cell_h)
         target = (layout.COLOUR_GRID_LEFT + (want[0] + 0.5) * cell_w, top + (want[1] + 0.5) * cell_h)
 
-        before = self.snapshot(grid)
-        self.click(swatch)
-        self.wait_settled(grid, before=before, min_wait=0.15, timeout=1.5)
+        self.wait_settled(grid, min_wait=0.05, timeout=1.0)  # let the tab finish sliding in
+        closed = self.snapshot(grid)
+
+        def grid_open():
+            # The open grid covers the finish buttons, so that part of the screen changes a lot.
+            return self._differs(closed, self.snapshot(grid), threshold=6)
+
+        def close_to(a, b):
+            return sum(abs(x - y) for x, y in zip(a, b)) <= 90
+
+        for _ in range(2):  # the first click after a tab switch can get lost (seen live)
+            self.click(swatch)
+            self.wait_settled(grid, before=closed, min_wait=0.15, timeout=1.5)
+            if grid_open():
+                break
+        else:
+            # Nothing opened, so there's nothing to close: never press Esc here, it would mean BACK.
+            self.save_debug(f"colour_{team}_{part}_no_grid")
+            return "skipped", None
+        # The grid fades in: sample the square until its colour stops changing.
         self.grab()
         expected = self.pixel(target)
+        for _ in range(5):
+            self.wait(0.05)
+            self.grab()
+            now = self.pixel(target)
+            if close_to(now, expected) and sum(abs(x - y) for x, y in zip(now, expected)) <= 6:
+                break
+            expected = now
         self.click(target)
-        self.wait_settled(grid, min_wait=0.15, timeout=1.5)
+
+        def swatch_matches():
+            self.grab()
+            return close_to(expected, self.pixel(swatch))
+
+        # Usually right straight away; otherwise give the grid time to close and the swatch to update.
+        self.wait(0.1)
+        for extra in (0.0, 0.4):
+            if extra:
+                self.wait(extra)
+            if swatch_matches():
+                self.equipped[team][key] = want
+                return "set", label
+        self.save_debug(f"colour_{team}_{part}")
         self.grab()
-        got = self.pixel(swatch)
-        if sum(abs(a - b) for a, b in zip(expected, got)) > 90:
-            inputs.press("esc")  # make sure no grid is left open
+        if close_to(self.pixel(target), expected):
+            inputs.press("esc")  # the grid is still open (its square is still showing): close it
             self.wait(0.3)
-            self.save_debug(f"colour_{team}_{part}")
-            return "skipped", None
-        self.equipped[team][key] = want
-        return "set", label
+        self.ensure_tab("paint_finish")
+        return "skipped", None
+
+    def ensure_tab(self, key):
+        """Get back to a customize tab if something closed the screen (e.g. an Esc that meant BACK)."""
+        self.grab()
+        if self.which_screen()[0] != "customize":
+            self.open_customize()
+        self.go_to_tab(key)
 
     # ---------- whole preset ----------
 
@@ -742,6 +854,7 @@ class Garage:
                                         f"(left as '{final_name}')")
             if slot == "decal" and paint_jobs:
                 self.go_to_tab("paint_finish")
+                self.paint_rows()
                 for team, part in paint_jobs:
                     finish = preset[team].get(f"{part}_finish")
                     if finish:

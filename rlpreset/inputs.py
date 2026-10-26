@@ -62,6 +62,13 @@ def _key(vk=0, scan=0, flags=0):
 
 
 _stop_requested = threading.Event()
+_target_window = None  # input is only sent while this window (the game) is in front
+
+
+def set_target_window(hwnd):
+    """Only send input while this window is the active one. None turns the check off."""
+    global _target_window
+    _target_window = hwnd
 
 
 def request_stop():
@@ -77,6 +84,9 @@ def check_abort():
     """Stop if the Stop button was pressed, F8 is held, or the mouse is in the top-left screen corner."""
     if _stop_requested.is_set():
         raise Aborted("Stop pressed")
+    if _target_window and user32.GetForegroundWindow() != _target_window:
+        # Another window came to the front: clicks and keys would land in it instead of the game.
+        raise Aborted("Rocket League stopped being the active window")
     if user32.GetAsyncKeyState(VK["f8"]) & 0x8000:
         raise Aborted("F8 pressed")
     pt = wintypes.POINT()
