@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'">
+<title>RL Preset Loader</title>
+<link rel="stylesheet" href="/ui/app.css">
+</head>
+<body>
+<div id="full">
+  <header class="topbar">
+    <div class="brand"><span class="logo"><span></span><span></span></span>RL Preset Loader</div>
+    <span id="game-pill" class="pill">Looking for the game…</span>
+    <div class="spacer"></div>
+    <div id="launch-box" class="launch" hidden>
+      <select id="launcher" aria-label="Launcher">
+        <option value="steam">Steam</option>
+        <option value="epic">Epic Games</option>
+      </select>
+      <button id="launch-btn" class="btn">Launch game</button>
+    </div>
+    <button id="scan-btn" class="btn" title="Checks which pro items you own">Scan inventory</button>
+    <button id="garage-btn" class="btn" title="Reads your garage preset names so nothing gets added twice">Check garage</button>
+    <button id="clear-btn" class="btn danger-ghost">Clear all presets</button>
+  </header>
+
+  <div class="main">
+    <aside class="filters">
+      <label>Player<select id="f-player"></select></label>
+      <label>Body<select id="f-body"></select></label>
+      <label>Decal<select id="f-decal"></select></label>
+      <label>Wheels<select id="f-wheels"></select></label>
+      <label>Boost<select id="f-boost"></select></label>
+      <div class="group">
+        <div class="group-title">Show</div>
+        <label class="check"><input type="checkbox" id="s-full" checked><span class="dot full"></span>Full</label>
+        <label class="check"><input type="checkbox" id="s-partial" checked><span class="dot partial"></span>Partial</label>
+        <label class="check"><input type="checkbox" id="s-cant"><span class="dot cant"></span>Can't make</label>
+        <label class="check"><input type="checkbox" id="s-unknown" checked><span class="dot unknown"></span>Not scanned</label>
+        <label class="check"><input type="checkbox" id="s-added"><span class="dot added"></span>Already added</label>
+      </div>
+      <button id="reset-filters" class="btn small">Reset filters</button>
+      <p class="hint" id="scan-hint"></p>
+    </aside>
+
+    <section class="results">
+      <div class="results-head">
+        <span id="count"></span>
+        <div class="spacer"></div>
+        <button id="select-all" class="btn small">Select all shown</button>
+        <button id="select-none" class="btn small">Clear selection</button>
+      </div>
+      <div id="grid" class="grid"></div>
+      <div id="empty" class="empty" hidden>No presets match these filters.</div>
+    </section>
+  </div>
+
+  <footer class="bottombar">
+    <span id="selected-info">Nothing selected</span>
+    <label class="check inline"><input type="checkbox" id="skip-added" checked>Skip presets I already have</label>
+    <div class="spacer"></div>
+    <span class="credit">Built by bordder · Presets from the RLCS Pro Preset Database by Hodge</span>
+    <button id="apply-btn" class="btn primary" disabled>Add to garage</button>
+  </footer>
+</div>
+
+<div id="mini" hidden>
+  <div class="mini-top"><span id="mini-title"></span><button id="stop-btn" class="btn danger small">Stop</button></div>
+  <div id="mini-step" class="mini-step"></div>
+  <div class="bar"><div id="mini-bar"></div></div>
+  <div class="mini-foot"><span id="mini-left"></span><span>Hands off mouse and keyboard · F8 also stops</span></div>
+</div>
+
+<div id="modal-bg" class="modal-bg" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div class="modal-buttons" id="modal-buttons"></div>
+  </div>
+</div>
+
+<script src="/ui/app.js"></script>
+</body>
+</html>

@@ -1,4 +1,6 @@
+bottle==0.13.4
 pillow==13.0.0
+pywebview==6.2.1
 winrt-runtime==4.0.3
 winrt-Windows.Foundation==4!10.0.28000.2705
 winrt-Windows.Foundation.Collections==4!10.0.28000.2705

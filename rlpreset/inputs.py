@@ -1,6 +1,7 @@
 """Mouse and keyboard input through Windows SendInput. No controller or driver needed."""
 
 import ctypes
+import threading
 import time
 from ctypes import wintypes
 
@@ -60,8 +61,22 @@ def _key(vk=0, scan=0, flags=0):
     return inp
 
 
+_stop_requested = threading.Event()
+
+
+def request_stop():
+    """Called by the app's Stop button; the running job stops at its next input or wait."""
+    _stop_requested.set()
+
+
+def clear_stop():
+    _stop_requested.clear()
+
+
 def check_abort():
-    """Stop if F8 is held or the mouse is in the top-left screen corner."""
+    """Stop if the Stop button was pressed, F8 is held, or the mouse is in the top-left screen corner."""
+    if _stop_requested.is_set():
+        raise Aborted("Stop pressed")
     if user32.GetAsyncKeyState(VK["f8"]) & 0x8000:
         raise Aborted("F8 pressed")
     pt = wintypes.POINT()

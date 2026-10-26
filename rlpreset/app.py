@@ -1,224 +1,302 @@
-"""The app window: pick pro presets, press Apply, watch the log."""
+"""The app window: a web page (rlpreset/ui) shown with Windows' built-in Edge engine.
 
-import json
+The page talks to Python through `Api` (window.pywebview.api in JavaScript). Long jobs run in a
+background thread; while one runs the window shrinks to a small always-on-top progress bar.
+The page asks for progress (get_progress) rather than Python pushing it: calling into the page
+from the job thread can freeze in pywebview.
+"""
+
 import pathlib
-import queue
 import threading
 import time
-import tkinter as tk
-from tkinter import messagebox, ttk
 
-from . import game, garage, inputs, screen
+import bottle
+import webview
 
-PRESETS_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" / "presets.json"
+from . import catalog, game, garage, inputs, store
+
+UI_DIR = pathlib.Path(__file__).resolve().parent / "ui"
 EXPECTED_ASPECT = 16 / 9
+SECONDS_PER_PRESET = 25
+SECONDS_PER_SCAN_ITEM = 2
+SECONDS_PER_GARAGE_PRESET = 0.8  # reading the garage list, measured live
+# A garage list read this recently (in this session) is trusted instead of reading it again.
+GARAGE_FRESH_SECONDS = 10 * 60
+FULL_SIZE = (1280, 840)
+MINI_SIZE = (440, 150)
+CLEAR_CONFIRM_WORD = "DELETE"
+
+# Local web server for the page and the preset pictures. Only these two folders are served.
+server = bottle.Bottle()
 
 
-def summary(preset):
-    blue = preset["blue"]
-    parts = []
-    for slot in ("body", "decal", "wheels"):
-        item = blue.get(slot)
-        if item:
-            parts.append(f"{item['paint'] + ' ' if item['paint'] else ''}{item['name']}")
-    return " / ".join(parts)
+@server.route("/")
+def _index():
+    return bottle.static_file("index.html", root=str(UI_DIR))
 
 
-class App:
-    def __init__(self, root):
-        self.root = root
-        self.messages = queue.Queue()
-        self.worker = None
-        data = json.loads(PRESETS_PATH.read_text(encoding="utf-8"))
-        self.presets = data["presets"]
-        self.credit = data["credit"]
+@server.route("/ui/<name:re:[\\w.-]+>")
+def _ui(name):
+    return bottle.static_file(name, root=str(UI_DIR))
 
-        root.title("RL Pro Preset Loader")
-        root.geometry("760x640")
-        root.minsize(620, 520)
 
-        # --- game row ---
-        top = ttk.Frame(root, padding=8)
-        top.pack(fill="x")
-        ttk.Label(top, text="Launcher:").pack(side="left")
-        self.launcher = tk.StringVar(value="steam")
-        ttk.Radiobutton(top, text="Steam", variable=self.launcher, value="steam").pack(side="left")
-        ttk.Radiobutton(top, text="Epic Games", variable=self.launcher, value="epic").pack(side="left")
-        ttk.Button(top, text="Launch game", command=self.launch).pack(side="left", padx=6)
-        ttk.Button(top, text="Find game", command=self.refresh_game).pack(side="left")
-        ttk.Button(top, text="Check screen", command=self.check_screen).pack(side="left", padx=6)
-        self.status = ttk.Label(root, text="", padding=(8, 0), foreground="#555")
-        self.status.pack(fill="x")
+@server.route("/img/<name:re:[\\w-]+\\.webp>")
+def _img(name):
+    response = bottle.static_file(name, root=str(catalog.IMAGES_DIR))
+    response.set_header("Cache-Control", "max-age=86400")
+    return response
 
-        # --- preset list ---
-        mid = ttk.Frame(root, padding=8)
-        mid.pack(fill="both", expand=True)
-        search_row = ttk.Frame(mid)
-        search_row.pack(fill="x")
-        ttk.Label(search_row, text="Search player or item:").pack(side="left")
-        self.filter_text = tk.StringVar()
-        self.filter_text.trace_add("write", lambda *_: self.fill_list())
-        ttk.Entry(search_row, textvariable=self.filter_text).pack(side="left", fill="x", expand=True, padx=6)
 
-        self.tree = ttk.Treeview(mid, columns=("player", "items"), show="headings", selectmode="extended")
-        self.tree.heading("player", text="Player")
-        self.tree.heading("items", text="Body / Decal / Wheels")
-        self.tree.column("player", width=140, stretch=False)
-        self.tree.pack(fill="both", expand=True, pady=6)
+class Api:
+    def __init__(self):
+        self._presets, self._credit = catalog.load()
+        self._by_id = {p["id"]: p for p in self._presets}
+        self._window = None
+        self._worker = None
+        self._saved_geometry = None
+        self._job = {"running": False, "id": 0}
+        self._garage_read_at = None  # time.monotonic() of the last garage read this session
 
-        # --- options + buttons ---
-        opts = ttk.Frame(root, padding=(8, 0))
-        opts.pack(fill="x")
-        # Every preset always goes into a brand-new garage preset, so the user's own presets are
-        # never changed, renamed or deleted.
-        self.default_items = tk.BooleanVar(value=True)
-        self.other_paint = tk.BooleanVar(value=True)
-        self.slow = tk.BooleanVar(value=False)
-        ttk.Checkbutton(opts, text="Use the default item if I don't own one (e.g. Classic trail)",
-                        variable=self.default_items).pack(side="left")
-        ttk.Checkbutton(opts, text="Use another paint if I don't own the exact one",
-                        variable=self.other_paint).pack(side="left", padx=8)
-        ttk.Checkbutton(opts, text="Slow mode", variable=self.slow).pack(side="left")
+    # ---------- called from the page ----------
 
-        buttons = ttk.Frame(root, padding=8)
-        buttons.pack(fill="x")
-        self.apply_button = ttk.Button(buttons, text="Apply selected", command=self.apply_selected)
-        self.apply_button.pack(side="left")
-        ttk.Button(buttons, text="Select all shown",
-                   command=lambda: self.tree.selection_set(self.tree.get_children())).pack(side="left", padx=6)
-        ttk.Label(buttons, text="Stop any time: hold F8 or push the mouse into the top-left corner",
-                  foreground="#a33").pack(side="left", padx=10)
+    def get_state(self):
+        inventory = store.load("inventory")
+        garage_list = store.load("garage") or {}
+        return {
+            "presets": catalog.cards(self._presets, inventory, garage_list.get("names", [])),
+            "credit": self._credit,
+            "inventory_checked": (inventory or {}).get("checked_at"),
+            "garage_checked": garage_list.get("checked_at"),
+            "game": self.game_status(),
+            "busy": self.is_busy(),
+            "seconds_per_preset": SECONDS_PER_PRESET,
+        }
 
-        self.log_box = tk.Text(root, height=10, state="disabled", wrap="word")
-        self.log_box.pack(fill="both", padx=8, pady=(0, 4))
-        ttk.Label(root, text=f"Presets: {self.credit}", foreground="#777", padding=(8, 0, 8, 6)).pack(fill="x")
-
-        self.fill_list()
-        self.refresh_game()
-        root.after(100, self.drain_messages)
-
-    # ---------- list ----------
-
-    def fill_list(self):
-        needle = screen.normalize(self.filter_text.get())
-        self.tree.delete(*self.tree.get_children())
-        for index, preset in enumerate(self.presets):
-            text = f"{preset['player']} {summary(preset)}"
-            if needle in screen.normalize(text):
-                self.tree.insert("", "end", iid=str(index), values=(preset["player"], summary(preset)))
-
-    # ---------- game ----------
-
-    def refresh_game(self):
+    def game_status(self):
         hwnd = game.find_window()
         if not hwnd:
-            self.status.config(text="Rocket League not found. Start it, then press Find game.")
-            return None
+            return {"found": False, "text": "Rocket League isn't running"}
         width, height = game.resolution(hwnd)
         launcher = game.detect_launcher(hwnd)
-        if launcher:
-            self.launcher.set(launcher)
-        text = f"Game found: {width}x{height}, {launcher or 'launcher unknown'}, OCR language {screen.ocr_language()}"
-        if height and abs(width / height - EXPECTED_ASPECT) > 0.02:
-            text += "  WARNING: only 16:9 resolutions are supported"
-        self.status.config(text=text)
-        return hwnd
+        ok_aspect = height and abs(width / height - EXPECTED_ASPECT) <= 0.02
+        text = f"Game found · {width}×{height} · {(launcher or 'unknown launcher').title()}"
+        if not ok_aspect:
+            text += " · needs a 16:9 resolution"
+        return {"found": True, "ok": bool(ok_aspect), "text": text, "launcher": launcher}
 
-    def launch(self):
-        game.launch(self.launcher.get())
-        self.log(f"Asked {self.launcher.get()} to start Rocket League. Press Find game once it's on the main menu.")
+    def launch_game(self, launcher):
+        if launcher not in ("steam", "epic"):
+            return False
+        game.launch(launcher)
+        return True
 
-    def check_screen(self):
-        hwnd = self.refresh_game()
-        if hwnd:
-            self.run_in_background(lambda: self.log(garage.describe_screen(garage.Garage(hwnd, self.log))))
+    def is_busy(self):
+        return bool(self._worker and self._worker.is_alive())
 
-    # ---------- apply ----------
+    def stop(self):
+        inputs.request_stop()
 
-    def apply_selected(self):
-        chosen = [self.presets[int(i)] for i in self.tree.selection()]
+    def get_progress(self):
+        return dict(self._job)
+
+    def start_scan(self):
+        needed = catalog.needed_items(self._presets)
+        count = sum(len(v) for v in needed.values())
+        return self._start("Checking your inventory", count * SECONDS_PER_SCAN_ITEM + 30,
+                           lambda g, progress: self._scan(g, needed, progress))
+
+    def start_check_garage(self):
+        return self._start("Checking your garage presets", 60, self._check_garage)
+
+    def start_apply(self, ids, skip_added=True):
+        chosen = [self._by_id[i] for i in ids if i in self._by_id]
         if not chosen:
-            messagebox.showinfo("Nothing selected", "Pick one or more presets in the list first.")
-            return
-        hwnd = self.refresh_game()
-        if not hwnd:
-            return
-        if len(chosen) > 1 and not messagebox.askyesno(
-                "Apply presets",
-                f"Add {len(chosen)} new presets to your garage? Roughly {len(chosen) * 25 // 60 + 1} minutes.\n\n"
-                "Don't touch the mouse or keyboard while it runs. Hold F8 to stop."):
-            return
-        options = garage.Options(allow_other_paint=self.other_paint.get(),
-                                 use_default_when_missing=self.default_items.get(),
-                                 speed=1.6 if self.slow.get() else 1.0)
+            return {"ok": False, "error": "Pick at least one preset first."}
         # Similar presets one after another means more slots are already right and get skipped.
         chosen.sort(key=lambda p: [str((p["blue"].get(s) or {}).get("name")) for s in garage.ITEM_SLOTS])
+        return self._start(f"Adding {len(chosen)} preset{'s' if len(chosen) > 1 else ''}",
+                           self._prep_seconds(skip_added) + len(chosen) * SECONDS_PER_PRESET,
+                           lambda g, progress: self._apply(g, chosen, skip_added, progress))
 
-        def job():
+    def _garage_fresh(self):
+        return self._garage_read_at is not None and time.monotonic() - self._garage_read_at < GARAGE_FRESH_SECONDS
+
+    def _prep_seconds(self, skip_added):
+        """Time spent before the first preset: an inventory scan if there isn't one, and the garage check."""
+        seconds = 0
+        if not store.load("inventory"):
+            seconds += sum(len(v) for v in catalog.needed_items(self._presets).values()) * SECONDS_PER_SCAN_ITEM + 30
+        if skip_added and not self._garage_fresh():
+            known = len((store.load("garage") or {}).get("names", [])) or 40
+            seconds += known * SECONDS_PER_GARAGE_PRESET + 5
+        return round(seconds)
+
+    def start_clear_all(self, typed):
+        # The page asks the user to type the word; it's checked here too so nothing else can trigger it.
+        if (typed or "").strip().upper() != CLEAR_CONFIRM_WORD:
+            return {"ok": False, "error": f"Type {CLEAR_CONFIRM_WORD} to confirm."}
+        return self._start("Deleting all garage presets", 120, self._clear_all)
+
+    # ---------- jobs ----------
+
+    def _start(self, title, estimate, job):
+        if self.is_busy():
+            return {"ok": False, "error": "Already working on something. Press Stop first."}
+        hwnd = game.find_window()
+        if not hwnd:
+            return {"ok": False, "error": "Rocket League isn't running. Start it and go to the main menu."}
+        inputs.clear_stop()
+        self._job = {"running": True, "id": self._job["id"] + 1, "title": title, "step": title,
+                     "fraction": 0.0, "seconds_left": estimate, "result": None}
+        self._worker = threading.Thread(target=self._run, args=(hwnd, title, estimate, job), daemon=True)
+        self._worker.start()
+        return {"ok": True}
+
+    def _run(self, hwnd, title, estimate, job):
+        started = time.monotonic()
+        state = {"step": title, "fraction": 0.0}
+
+        def progress(step, fraction=None, seconds_left=None):
+            state["step"] = step
+            if fraction is not None:
+                state["fraction"] = max(0.0, min(1.0, fraction))
+            elapsed = time.monotonic() - started
+            if seconds_left is not None:
+                left = seconds_left
+            elif state["fraction"] > 0.02:
+                left = elapsed / state["fraction"] - elapsed
+            else:
+                left = max(estimate - elapsed, 5)
+            self._job.update(step=state["step"], fraction=state["fraction"], seconds_left=round(left))
+
+        result = {"title": title}
+        self._mini(True)
+        try:
+            progress(title, 0)
             if not game.focus(hwnd):
-                self.log("Couldn't bring Rocket League to the front. Click on the game window, then try again.")
-                return
-            g = garage.Garage(hwnd, self.log, options)
-            start, done = time.monotonic(), 0
-            for number, preset in enumerate(chosen, 1):
-                try:
-                    g.apply(preset)
-                    done += 1
-                except garage.NavigationError as e:
-                    if "garage may be full" in str(e):
-                        raise
-                    self.log(f"Problem with {preset['player']}: {e}. Moving on to the next one.")
-                    g.equipped = {"blue": {}, "orange": {}}  # unsure what's equipped now
-                left = (time.monotonic() - start) / number * (len(chosen) - number)
-                if len(chosen) > 1:
-                    self.log(f"--- {number}/{len(chosen)} done, about {left / 60:.0f} min left ---")
-            self.log(f"All done: {done} of {len(chosen)} preset(s) added.")
+                raise garage.NavigationError("Couldn't bring Rocket League to the front. Click the game, then try again.")
+            g = garage.Garage(hwnd, lambda text: None, garage.Options(), store.load("inventory"))
+            result.update(job(g, progress) or {})
+        except inputs.Aborted as e:
+            result["stopped"] = str(e)
+        except garage.NavigationError as e:
+            result["error"] = str(e)
+        except Exception as e:  # show anything unexpected instead of dying silently
+            result["error"] = f"{type(e).__name__}: {e}"
+        finally:
+            result["seconds"] = round(time.monotonic() - started)
+            self._mini(False)
+            self._job.update(running=False, result=result)
 
-        self.run_in_background(job)
+    def _scan(self, g, needed, progress):
+        inventory = g.scan_inventory(needed, progress)
+        inventory["checked_at"] = store.stamp()
+        inventory["missing_decals"] = []  # learned again while adding presets
+        store.save("inventory", inventory)
+        owned = sum(len(v) for v in inventory["items"].values())
+        return {"message": f"Found {owned} matching items and "
+                           f"{sum(len(v) for v in inventory['finishes'].values())} paint finishes."}
 
-    def run_in_background(self, job):
-        if self.worker and self.worker.is_alive():
-            messagebox.showinfo("Busy", "Still working. Hold F8 to stop it.")
-            return
+    def _read_garage(self, g, progress):
+        names = g.list_presets(lambda text: progress(text))
+        store.save("garage", {"checked_at": store.stamp(), "names": names})
+        self._garage_read_at = time.monotonic()
+        return names
 
-        def wrapper():
+    def _check_garage(self, g, progress):
+        names = self._read_garage(g, progress)
+        return {"message": f"You have {len(names)} presets in your garage."}
+
+    def _apply(self, g, chosen, skip_added, progress):
+        if not store.load("inventory"):
+            # The scan tells us which bodies are missing before any preset gets created.
+            progress("Checking your inventory first", 0)
+            self._scan(g, catalog.needed_items(self._presets), lambda step, f=None: progress(step))
+            g.owned = {s: [tuple(i) for i in v] for s, v in store.load("inventory")["items"].items()}
+        # The garage itself is the record of what's there (so presets deleted in the game count as gone).
+        # A list read in the last few minutes is reused; presets added since are appended to it.
+        if skip_added and not self._garage_fresh():
+            progress("Checking which presets you already have", 0)
+            self._read_garage(g, progress)
+        garage_names = (store.load("garage") or {}).get("names", []) if skip_added else []
+
+        report = []
+        started, done_count = time.monotonic(), 0
+        for number, preset in enumerate(chosen):
+            name = catalog.preset_name(preset)
+            entry = {"id": preset["id"], "player": preset["player"], "name": name}
+            report.append(entry)
+            per_preset = (time.monotonic() - started) / done_count if done_count else SECONDS_PER_PRESET
+            progress(f"{number + 1} of {len(chosen)}: {preset['player']} · {name}", number / len(chosen),
+                     seconds_left=round(per_preset * (len(chosen) - number)))
+            if skip_added and catalog.already_added(preset, garage_names):
+                entry["outcome"] = "already"
+                continue
             try:
-                job()
-            except inputs.Aborted as e:
-                self.log(f"Stopped: {e}")
+                done = g.apply(preset, name)
+                done_count += 1
+            except garage.PresetSkipped as e:
+                entry.update(outcome="skipped", reason=str(e))
+                continue
             except garage.NavigationError as e:
-                self.log(f"Problem: {e}")
-            except Exception as e:  # show anything unexpected instead of dying silently
-                self.log(f"Error: {type(e).__name__}: {e}")
-            finally:
-                self.messages.put(("idle", None))
+                if "garage may be full" in str(e):
+                    entry.update(outcome="error", reason=str(e))
+                    break
+                entry.update(outcome="error", reason=str(e))
+                g.equipped = {"blue": {}, "orange": {}}  # unsure what's equipped now
+                continue
+            entry.update(outcome="added", name=done["name"],
+                         swaps=[r for r in done["results"] if r["outcome"] in ("default", "skipped")])
+            garage_names.append(done["name"])
+            self._remember(garage_names, g)
+        progress("Done", 1)
+        return {"report": report}
 
-        self.apply_button.config(state="disabled")
-        self.worker = threading.Thread(target=wrapper, daemon=True)
-        self.worker.start()
+    def _remember(self, garage_names, g):
+        """Save what this run learned: the new preset names, and decals found missing (the inventory
+        scan can't check decals, so they're learned while adding)."""
+        garage_list = store.load("garage") or {}
+        store.save("garage", {"checked_at": garage_list.get("checked_at") or store.stamp(), "names": garage_names})
+        inventory = store.load("inventory")
+        if inventory is not None:
+            missing = {tuple(d) for d in inventory.get("missing_decals", [])}
+            missing |= {(name, paint) for slot, (name, paint) in g.missing if slot == "decal"}
+            inventory["missing_decals"] = sorted([list(d) for d in missing], key=str)
+            store.save("inventory", inventory)
 
-    # ---------- log ----------
+    def _clear_all(self, g, progress):
+        deleted = g.delete_all_presets(progress)
+        self._read_garage(g, progress)
+        return {"message": f"Deleted {deleted} preset{'s' if deleted != 1 else ''}."}
 
-    def log(self, text):
-        self.messages.put(("log", text))
+    # ---------- window ----------
 
-    def drain_messages(self):
-        while not self.messages.empty():
-            kind, text = self.messages.get()
-            if kind == "log":
-                self.log_box.config(state="normal")
-                self.log_box.insert("end", text + "\n")
-                self.log_box.see("end")
-                self.log_box.config(state="disabled")
-            elif kind == "idle":
-                self.apply_button.config(state="normal")
-        self.root.after(100, self.drain_messages)
+    def _mini(self, on):
+        """Shrink to a small always-on-top bar in the top-right corner of the game's screen, or restore."""
+        w = self._window
+        if not w:
+            return
+        if on:
+            self._saved_geometry = (w.x, w.y, w.width, w.height)
+            hwnd = game.find_window()
+            left, top, right, _ = game.client_rect(hwnd) if hwnd else (0, 0, 1920, 1080)
+            w.resize(*MINI_SIZE)
+            w.move(right - MINI_SIZE[0] - 24, top + 24)
+            w.on_top = True
+        else:
+            w.on_top = False
+            if self._saved_geometry:
+                x, y, width, height = self._saved_geometry
+                w.resize(width, height)
+                w.move(x, y)
 
 
 def main():
-    root = tk.Tk()
-    App(root)
-    root.mainloop()
+    api = Api()
+    api._window = webview.create_window("RL Preset Loader", server, js_api=api,
+                                       width=FULL_SIZE[0], height=FULL_SIZE[1], min_size=(MINI_SIZE[0] - 20, MINI_SIZE[1] - 20),
+                                       background_color="#0a1020")
+    webview.start(private_mode=True)
 
 
 if __name__ == "__main__":

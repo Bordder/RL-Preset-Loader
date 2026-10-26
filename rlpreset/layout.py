@@ -8,10 +8,16 @@ MENU_REGION = (0.0, 0.10, 0.40, 0.95)
 
 # Garage screen
 PRESET_TITLE_REGION = (0.07, 0.48, 0.27, 0.535)
+PRESET_PREV_ARROW = (0.0685, 0.507)
+PRESET_NEXT_ARROW = (0.265, 0.507)
 PRESET_RENAME_PENCIL = (0.230, 0.602)
 # The preset DELETE bin sits right of the pencil. The app refuses to click anywhere in this box
-# while on the garage screen, so a user's preset can never be deleted by a misplaced click.
+# while on the garage screen, except from the "Clear all presets" job after the user confirmed it.
 DELETE_BIN_ZONE = (0.244, 0.570, 0.275, 0.635)
+DELETE_BIN = (0.2555, 0.602)
+# "DELETE PRESET / Are you sure you want to delete this preset? / YES  NO", measured live at 2560x1440.
+# The short button words only read reliably from a tight crop.
+DELETE_BUTTONS_REGION = (0.38, 0.535, 0.62, 0.585)
 # RENAME PRESET dialog (centre of screen), measured live at 2560x1440
 DIALOG_REGION = (0.30, 0.38, 0.70, 0.62)
 RENAME_TEXT_BOX = (0.4014, 0.5075)
@@ -48,6 +54,20 @@ FINISH_BUTTONS = {
 }
 FINISH_LIST_REGION = (0.200, 0.280, 0.335, 0.860)  # accent list opens lower than primary
 FINISH_LIST_SCROLL_POINT = (0.265, 0.55)
+
+# Colour swatches left of the finish buttons. Clicking one opens a grid of squares just below it:
+# 10 x 7 for primary (team hues), 15 x 7 for accent. The sheet's colour pictures are the same grids.
+COLOUR_SWATCHES = {
+    ("blue", "primary"): (0.166, 0.3096),
+    ("blue", "accent"): (0.166, 0.3471),
+    ("orange", "primary"): (0.166, 0.4444),
+    ("orange", "accent"): (0.166, 0.4822),
+}
+COLOUR_GRID_LEFT = 0.1355
+COLOUR_GRID_TOP_BELOW_SWATCH = 0.0213
+COLOUR_CELL = (0.01418, 0.0255)  # width, height of one square
+COLOUR_GRID_COLUMNS = {"primary": 10, "accent": 15}
+COLOUR_GRID_ROWS = 7
 
 # Panel titles for each tab, in the order the tab arrows step through them.
 TABS = [
