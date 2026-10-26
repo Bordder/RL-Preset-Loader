@@ -1,7 +1,10 @@
 """Find the Rocket League window, detect launcher and resolution, start the game."""
 
 import ctypes
+import json
 import os
+import pathlib
+import re
 import time
 from ctypes import wintypes
 
@@ -61,6 +64,46 @@ def detect_launcher(hwnd):
     if "epic games" in path or "epicgames" in path:
         return "epic"
     return None
+
+
+def installed_launchers():
+    """Launchers that have Rocket League installed, found without the game running.
+    Steam: its library folders (from the registry). Epic: the launcher's install manifests."""
+    found = []
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
+            steam = pathlib.Path(winreg.QueryValueEx(key, "SteamPath")[0])
+        libraries = [steam]
+        vdf = steam / "steamapps" / "libraryfolders.vdf"
+        if vdf.exists():
+            libraries += [pathlib.Path(p.replace("\\\\", "\\"))
+                          for p in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(encoding="utf-8", errors="ignore"))]
+        if any((lib / "steamapps" / "common" / "rocketleague").exists() for lib in libraries):
+            found.append("steam")
+    except OSError:
+        pass
+    manifests = pathlib.Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Epic" / "EpicGamesLauncher" / "Data" / "Manifests"
+    for item in manifests.glob("*.item") if manifests.exists() else []:
+        try:
+            if json.loads(item.read_text(encoding="utf-8", errors="ignore")).get("DisplayName") == "Rocket League":
+                found.append("epic")
+                break
+        except ValueError:
+            continue
+    return found
+
+
+def settings_resolution():
+    """(width, height) from Rocket League's own settings file, or None. Works with the game closed."""
+    path = (pathlib.Path(os.environ.get("USERPROFILE", "")) / "Documents" / "My Games" / "Rocket League" /
+            "TAGame" / "Config" / "TASystemSettings.ini")
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    x, y = re.search(r"^ResX=(\d+)", text, re.M), re.search(r"^ResY=(\d+)", text, re.M)
+    return (int(x.group(1)), int(y.group(1))) if x and y else None
 
 
 def launch(launcher):

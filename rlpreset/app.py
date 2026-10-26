@@ -7,6 +7,7 @@ from the job thread can freeze in pywebview.
 """
 
 import pathlib
+import re
 import threading
 import time
 
@@ -17,6 +18,8 @@ from . import catalog, game, garage, inputs, store
 
 UI_DIR = pathlib.Path(__file__).resolve().parent / "ui"
 EXPECTED_ASPECT = 16 / 9
+# 16:9 resolutions offered on the setup screen (positions are fractions of the screen, so all of these work)
+RESOLUTIONS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3200, 1800), (3840, 2160)]
 SECONDS_PER_PRESET = 28  # measured live on 20+ presets after the speed work
 SECONDS_PER_SCAN_ITEM = 2
 SECONDS_PER_GARAGE_PRESET = 0.8  # reading the garage list, measured live
@@ -80,9 +83,46 @@ class Api:
         launcher = game.detect_launcher(hwnd)
         ok_aspect = height and abs(width / height - EXPECTED_ASPECT) <= 0.02
         text = f"Game found · {width}×{height} · {(launcher or 'unknown launcher').title()}"
+        chosen = (store.load("settings") or {}).get("resolution")
         if not ok_aspect:
             text += " · needs a 16:9 resolution"
+        elif chosen and chosen != f"{width}x{height}":
+            text += f" · you picked {chosen.replace('x', '×')} in setup"
         return {"found": True, "ok": bool(ok_aspect), "text": text, "launcher": launcher}
+
+    def get_setup(self):
+        """For the setup screen: what was detected (and how), the choices, and what was saved before."""
+        hwnd = game.find_window()
+        platform, platform_from = None, None
+        resolution, resolution_from = None, None
+        if hwnd:
+            platform, platform_from = game.detect_launcher(hwnd), "the running game"
+            resolution, resolution_from = game.resolution(hwnd), "the running game"
+        if not platform:
+            installed = game.installed_launchers()
+            if len(installed) == 1:
+                platform, platform_from = installed[0], "where Rocket League is installed"
+        if not resolution or not resolution[1]:
+            resolution = game.settings_resolution()
+            resolution_from = "your Rocket League settings" if resolution else None
+        options = [f"{w}x{h}" for w, h in RESOLUTIONS]
+        detected = f"{resolution[0]}x{resolution[1]}" if resolution else None
+        if detected and detected not in options:
+            options.append(detected)
+        return {
+            "platform": platform, "platform_from": platform_from if platform else None,
+            "resolution": detected, "resolution_from": resolution_from if detected else None,
+            "resolution_ok": bool(resolution and abs(resolution[0] / resolution[1] - EXPECTED_ASPECT) <= 0.02),
+            "resolutions": options,
+            "saved": store.load("settings"),
+            "inventory_checked": (store.load("inventory") or {}).get("checked_at"),
+        }
+
+    def save_setup(self, platform, resolution):
+        if platform not in ("steam", "epic") or not re.fullmatch(r"\d{3,5}x\d{3,5}", resolution or ""):
+            return {"ok": False, "error": "Pick a platform and a resolution."}
+        store.save("settings", {"platform": platform, "resolution": resolution, "set_up_at": store.stamp()})
+        return {"ok": True}
 
     def launch_game(self, launcher):
         if launcher not in ("steam", "epic"):

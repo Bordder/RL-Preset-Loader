@@ -633,7 +633,8 @@ class Garage:
             self.missing.add((slot, want))
 
         default = layout.DEFAULT_ITEMS.get(slot)
-        if not default or screen.normalize(default) == want[0]:
+        # A painted default (e.g. Black Classic trail) that isn't owned still falls back to the plain one.
+        if not default or want == (screen.normalize(default), None):
             return "skipped", None
         if self.opt.skip_unchanged and self.equipped[team].get(slot) == (screen.normalize(default), None):
             return "default", default

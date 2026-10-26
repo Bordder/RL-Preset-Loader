@@ -8,11 +8,12 @@ explosion, paint finishes and colours for blue and orange. You can queue up one 
 
 > **This is not an item swapper.** It only uses items you already own.
 
-Still being worked on. There's no release yet. I will continue updating the presets database when I can.
+Still being worked on. I will continue updating the presets database when I can.
 
 ## Features
 
 - 375 pro presets from 134 players, with pictures of both cars
+- Quick setup that detects your platform and resolution
 - Filter by player, body, decal, wheels and boost
 - Scans your inventory and marks each preset as Full, Partial or Can't make
 - Checks your garage first so the same preset isn't added twice
@@ -45,11 +46,14 @@ presets is the Clear all presets button, and only after you type DELETE to confi
 
 You need Windows 10 or 11 and [Python 3](https://www.python.org/downloads/).
 
-1. Download or clone this repo
+1. Download the latest release (or clone this repo) and unzip it
 2. Start Rocket League and go to the main menu
 3. Double-click `run.bat` (the first time, it installs what it needs)
-4. Press **Scan inventory** once (about 3 minutes)
-5. Pick your presets and press **Add to garage**
+4. Follow the setup: it detects your platform and resolution, you just confirm them
+5. Let it scan your inventory (about 3 minutes)
+6. Pick your presets and press **Add to garage**
+
+You can change the platform or resolution any time with the **Setup** button.
 
 A preset takes about 25–30 seconds.
 

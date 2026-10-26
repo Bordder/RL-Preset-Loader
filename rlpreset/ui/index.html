@@ -19,6 +19,7 @@
       </select>
       <button id="launch-btn" class="btn">Launch game</button>
     </div>
+    <button id="setup-btn" class="btn" title="Platform and resolution">Setup</button>
     <button id="scan-btn" class="btn" title="Checks which pro items you own">Scan inventory</button>
     <button id="garage-btn" class="btn" title="Reads your garage preset names so nothing gets added twice">Check garage</button>
     <button id="clear-btn" class="btn danger-ghost">Clear all presets</button>
@@ -69,6 +70,53 @@
   <div id="mini-step" class="mini-step"></div>
   <div class="bar"><div id="mini-bar"></div></div>
   <div class="mini-foot"><span id="mini-left"></span><span>Hands off mouse and keyboard · F8 also stops</span></div>
+</div>
+
+<div id="setup" class="setup" hidden>
+  <div class="setup-card" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+    <div class="setup-dots" id="setup-dots"></div>
+
+    <section class="step" data-step="0">
+      <div class="brand big"><span class="logo"><span></span><span></span></span>RL Preset Loader</div>
+      <h2 id="setup-title">Pro car designs, straight into your garage</h2>
+      <p>Pick presets from 375 pro players' cars and the app builds them in your Rocket League garage for you,
+        using the items you already own.</p>
+      <p class="note">This is not an item swapper. It never touches the game's files and never changes your
+        own presets; every pro preset goes into a new one.</p>
+      <p class="note">Two quick questions first.</p>
+    </section>
+
+    <section class="step" data-step="1">
+      <h2>Which platform do you play on?</h2>
+      <p id="platform-hint" class="note"></p>
+      <div class="choices two" id="platform-choices">
+        <button class="choice" data-value="steam"><span class="choice-name">Steam</span><span class="tag" hidden>Detected</span></button>
+        <button class="choice" data-value="epic"><span class="choice-name">Epic Games</span><span class="tag" hidden>Detected</span></button>
+      </div>
+    </section>
+
+    <section class="step" data-step="2">
+      <h2>What resolution is your game at?</h2>
+      <p id="resolution-hint" class="note"></p>
+      <div class="choices three" id="resolution-choices"></div>
+      <p class="note">Play in fullscreen or borderless at a 16:9 resolution, with the game set to English.</p>
+    </section>
+
+    <section class="step" data-step="3">
+      <h2>You're set</h2>
+      <p id="summary" class="note"></p>
+      <p>Next, scan your inventory so the app can show which presets you can fully make. It takes about
+        3 minutes: start Rocket League, go to the main menu, and keep your hands off the mouse while it runs.</p>
+      <p class="note">You can always do this later with the Scan inventory button.</p>
+    </section>
+
+    <div class="setup-buttons">
+      <button id="setup-back" class="btn">Back</button>
+      <div class="spacer"></div>
+      <button id="setup-later" class="btn" hidden>Finish, scan later</button>
+      <button id="setup-next" class="btn primary">Next</button>
+    </div>
+  </div>
 </div>
 
 <div id="modal-bg" class="modal-bg" hidden>

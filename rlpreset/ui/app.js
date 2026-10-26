@@ -273,6 +273,86 @@ function confirmClear() {
   input.focus();
 }
 
+// ---------- setup screens ----------
+
+const setup = { step: 0, steps: 4, platform: null, resolution: null, info: null };
+
+function pretty(res) { return res.replace("x", " × "); }
+
+async function openSetup() {
+  const info = await api().get_setup();
+  setup.info = info;
+  setup.step = 0;
+  // Pre-select what was detected (or saved before); the user still confirms with Next.
+  setup.platform = info.platform || (info.saved || {}).platform || null;
+  setup.resolution = info.resolution || (info.saved || {}).resolution || null;
+
+  for (const b of $("platform-choices").querySelectorAll(".choice")) {
+    b.querySelector(".tag").hidden = b.dataset.value !== info.platform;
+  }
+  $("platform-hint").textContent = info.platform
+    ? `Detected ${info.platform === "steam" ? "Steam" : "Epic Games"} from ${info.platform_from}. Change it if that's wrong.`
+    : "Couldn't detect it, so pick one. Starting the game first lets the app detect it.";
+
+  $("resolution-choices").replaceChildren(...info.resolutions.map((r) => {
+    const b = el("button", { class: "choice", "data-value": r }, el("span", { class: "choice-name", text: pretty(r) }));
+    if (r === info.resolution) {
+      b.append(el("span", { class: `tag${info.resolution_ok ? "" : " warn"}`, text: info.resolution_ok ? "Detected" : "Not 16:9" }));
+    }
+    return b;
+  }));
+  $("resolution-hint").textContent = info.resolution
+    ? `Detected ${pretty(info.resolution)} from ${info.resolution_from}.` +
+      (info.resolution_ok ? "" : " That isn't 16:9, so switch the game to one of the 16:9 options.")
+    : "Couldn't detect it, so pick the one your game uses.";
+
+  $("setup").hidden = false;
+  showStep();
+}
+
+function showStep() {
+  for (const s of document.querySelectorAll(".step")) s.hidden = Number(s.dataset.step) !== setup.step;
+  $("setup-dots").replaceChildren(...Array.from({ length: setup.steps }, (_, i) => el("span", { class: i <= setup.step ? "on" : "" })));
+  for (const b of $("platform-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.platform);
+  for (const b of $("resolution-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.resolution);
+  $("setup-back").hidden = setup.step === 0;
+  const last = setup.step === setup.steps - 1;
+  $("setup-later").hidden = !last;
+  $("setup-next").textContent = setup.step === 0 ? "Get started" : last ? "Scan inventory now" : "Next";
+  $("setup-next").disabled = (setup.step === 1 && !setup.platform) || (setup.step === 2 && !setup.resolution);
+  if (last) {
+    $("summary").textContent = `${setup.platform === "steam" ? "Steam" : "Epic Games"} · ${pretty(setup.resolution)}`;
+  }
+}
+
+async function finishSetup(scan) {
+  const r = await api().save_setup(setup.platform, setup.resolution);
+  if (!r.ok) return showMessage("Setup", r.error);
+  $("setup").hidden = true;
+  $("launcher").value = setup.platform;
+  await load();
+  if (scan) startJob(api().start_scan());
+}
+
+function wireSetup() {
+  $("platform-choices").addEventListener("click", (e) => {
+    const b = e.target.closest(".choice");
+    if (b) { setup.platform = b.dataset.value; showStep(); }
+  });
+  $("resolution-choices").addEventListener("click", (e) => {
+    const b = e.target.closest(".choice");
+    if (b) { setup.resolution = b.dataset.value; showStep(); }
+  });
+  $("setup-back").addEventListener("click", () => { setup.step -= 1; showStep(); });
+  $("setup-next").addEventListener("click", () => {
+    if (setup.step === setup.steps - 1) return finishSetup(true);
+    setup.step += 1;
+    showStep();
+  });
+  $("setup-later").addEventListener("click", () => finishSetup(false));
+  $("setup-btn").addEventListener("click", openSetup);
+}
+
 // ---------- wiring ----------
 
 function wire() {
@@ -316,6 +396,8 @@ function wire() {
 
 window.addEventListener("pywebviewready", async () => {
   wire();
+  wireSetup();
   await load();
+  if (!(await api().get_setup()).saved) await openSetup();  // first run
   if ((await api().get_progress()).running) { setMini(true); watchJob(); }
 });

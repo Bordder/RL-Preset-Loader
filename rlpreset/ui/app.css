@@ -178,6 +178,39 @@ body.mini { overflow: hidden; }
 .tag.already { color: #8cc0ff; }
 .tag.skipped, .tag.error { color: var(--red); }
 
+/* setup screens */
+.setup {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.setup-card {
+  width: min(620px, 100%); background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: 14px; padding: 28px 30px 22px; display: flex; flex-direction: column; min-height: 420px;
+}
+.setup-card h2 { font-size: 22px; font-weight: 600; margin: 4px 0 10px; }
+.setup-card p { margin: 0 0 12px; line-height: 1.55; }
+.setup-card .note { color: var(--text-dim); font-size: 13px; }
+.brand.big { font-size: 15px; color: var(--text-dim); margin-bottom: 18px; }
+.step { flex: 1; }
+.setup-dots { display: flex; gap: 6px; margin-bottom: 18px; }
+.setup-dots span { height: 4px; flex: 1; border-radius: 2px; background: var(--panel-2); }
+.setup-dots span.on { background: linear-gradient(90deg, var(--blue), var(--orange)); }
+.choices { display: grid; gap: 10px; margin: 6px 0 14px; }
+.choices.two { grid-template-columns: 1fr 1fr; }
+.choices.three { grid-template-columns: repeat(3, 1fr); }
+.choice {
+  font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 16px 14px; cursor: pointer; text-align: left;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.choice:hover { background: #1b2c4b; }
+.choice.selected { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; background: var(--blue-soft); }
+.choice-name { font-weight: 600; font-size: 15px; white-space: nowrap; }
+.choices.three .choice { padding: 16px 12px; }
+.tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; color: var(--green); background: rgba(57, 217, 138, 0.12); }
+.tag.warn { color: var(--amber); background: rgba(255, 197, 61, 0.12); }
+.setup-buttons { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+
 ::-webkit-scrollbar { width: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
