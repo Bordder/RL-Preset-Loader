@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Screenshots the app saves when something goes wrong
+debug/
+
+# Personal garage screenshots used while mapping the menus
+reference/
+
+# Local tool settings
+.claude/
+.vscode/
+.idea/
