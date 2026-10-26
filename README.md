@@ -6,8 +6,7 @@ Pick the presets you want, hit apply, and the app goes through the garage menus 
 would: it makes a new preset, names it, and sets the body, decal, wheels, boost, trail, goal
 explosion and paint finishes for blue and orange. You can queue up one preset or a few hundred.
 
-> **This is not an item giver or an item swapper.** It can only use items that are already in
-> your inventory. All it does is build presets in your garage out of what you own.
+> **This is not an item swapper.** It only uses items you already own.
 
 Still being worked on. There's no release yet. I will continue updating the presets database when I can.
 
