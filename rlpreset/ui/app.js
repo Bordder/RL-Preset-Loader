@@ -44,9 +44,6 @@ async function load() {
   const ids = new Set(s.presets.map((p) => p.id));
   for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
   showGame(s.game);
-  $("scan-hint").textContent = s.inventory_checked
-    ? `Inventory checked ${s.inventory_checked}. Decals are checked while adding presets.`
-    : "Scan your inventory to see which presets you can fully make.";
   fillFilters();
   render();
 }
@@ -275,7 +272,7 @@ function confirmClear() {
 
 // ---------- setup screens ----------
 
-const setup = { step: 0, steps: 4, platform: null, resolution: null, info: null };
+const setup = { step: 0, steps: 6, platform: null, resolution: null, language: null, display: null, info: null };
 
 function pretty(res) { return res.replace("x", " × "); }
 
@@ -286,6 +283,11 @@ async function openSetup() {
   // Pre-select what was detected (or saved before); the user still confirms with Next.
   setup.platform = info.platform || (info.saved || {}).platform || null;
   setup.resolution = info.resolution || (info.saved || {}).resolution || null;
+  const lang = info.language ? (info.language === "english" ? "english" : "other") : null;
+  setup.language = lang || (info.saved || {}).language || null;
+  setup.display = info.display_mode || (info.saved || {}).display || null;
+  markDetected("language-choices", lang);
+  markDetected("display-choices", info.display_mode);
 
   for (const b of $("platform-choices").querySelectorAll(".choice")) {
     b.querySelector(".tag").hidden = b.dataset.value !== info.platform;
@@ -310,23 +312,32 @@ async function openSetup() {
   showStep();
 }
 
+function markDetected(listId, value) {
+  for (const b of $(listId).querySelectorAll(".choice")) b.querySelector(".tag").hidden = b.dataset.value !== value;
+}
+
 function showStep() {
   for (const s of document.querySelectorAll(".step")) s.hidden = Number(s.dataset.step) !== setup.step;
   $("setup-dots").replaceChildren(...Array.from({ length: setup.steps }, (_, i) => el("span", { class: i <= setup.step ? "on" : "" })));
   for (const b of $("platform-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.platform);
   for (const b of $("resolution-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.resolution);
+  for (const b of $("language-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.language);
+  for (const b of $("display-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.display);
+  $("language-warn").hidden = setup.language !== "other";
+  $("display-warn").hidden = setup.display !== "windowed";
   $("setup-back").hidden = setup.step === 0;
   const last = setup.step === setup.steps - 1;
   $("setup-later").hidden = !last;
   $("setup-next").textContent = setup.step === 0 ? "Get started" : last ? "Scan inventory now" : "Next";
-  $("setup-next").disabled = (setup.step === 1 && !setup.platform) || (setup.step === 2 && !setup.resolution);
+  $("setup-next").disabled = (setup.step === 1 && !setup.platform) || (setup.step === 2 && !setup.resolution) ||
+    (setup.step === 3 && !(setup.language && setup.display));
   if (last) {
     $("summary").textContent = `${setup.platform === "steam" ? "Steam" : "Epic Games"} · ${pretty(setup.resolution)}`;
   }
 }
 
 async function finishSetup(scan) {
-  const r = await api().save_setup(setup.platform, setup.resolution);
+  const r = await api().save_setup(setup.platform, setup.resolution, setup.language, setup.display);
   if (!r.ok) return showMessage("Setup", r.error);
   $("setup").hidden = true;
   $("launcher").value = setup.platform;
@@ -343,6 +354,12 @@ function wireSetup() {
     const b = e.target.closest(".choice");
     if (b) { setup.resolution = b.dataset.value; showStep(); }
   });
+  for (const [id, key] of [["language-choices", "language"], ["display-choices", "display"]]) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest(".choice");
+      if (b) { setup[key] = b.dataset.value; showStep(); }
+    });
+  }
   $("setup-back").addEventListener("click", () => { setup.step -= 1; showStep(); });
   $("setup-next").addEventListener("click", () => {
     if (setup.step === setup.steps - 1) return finishSetup(true);
@@ -377,7 +394,6 @@ function wire() {
   $("select-none").addEventListener("click", () => { state.selected.clear(); render(); });
   $("apply-btn").addEventListener("click", confirmApply);
   $("scan-btn").addEventListener("click", () => startJob(api().start_scan()));
-  $("garage-btn").addEventListener("click", () => startJob(api().start_check_garage()));
   $("clear-btn").addEventListener("click", confirmClear);
   $("launch-btn").addEventListener("click", async () => {
     await api().launch_game($("launcher").value);

@@ -209,6 +209,10 @@ body.mini { overflow: hidden; }
 .choices.three .choice { padding: 16px 12px; }
 .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; color: var(--green); background: rgba(57, 217, 138, 0.12); }
 .tag.warn { color: var(--amber); background: rgba(255, 197, 61, 0.12); }
+.setup-card .group-title { margin-top: 6px; }
+.warn-line { color: var(--amber); font-size: 13px; margin: -6px 0 10px; }
+.tips { margin: 6px 0 0; padding-left: 18px; line-height: 1.6; }
+.tips li { margin-bottom: 8px; }
 .setup-buttons { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 
 ::-webkit-scrollbar { width: 10px; }

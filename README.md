@@ -13,7 +13,7 @@ Still being worked on. I will continue updating the presets database when I can.
 ## Features
 
 - 375 pro presets from 134 players, with pictures of both cars
-- Quick setup that detects your platform and resolution
+- One exe, nothing to install, with a quick setup that detects your platform, resolution and game settings
 - Filter by player, body, decal, wheels and boost
 - Scans your inventory and marks each preset as Full, Partial or Can't make
 - Checks your garage first so the same preset isn't added twice
@@ -44,16 +44,23 @@ presets is the Clear all presets button, and only after you type DELETE to confi
 
 ## Getting started
 
-You need Windows 10 or 11 and [Python 3](https://www.python.org/downloads/).
-
-1. Download the latest release (or clone this repo) and unzip it
+1. Download **RL Preset Loader.exe** from the [latest release](../../releases/latest)
 2. Start Rocket League and go to the main menu
-3. Double-click `run.bat` (the first time, it installs what it needs)
-4. Follow the setup: it detects your platform and resolution, you just confirm them
-5. Let it scan your inventory (about 3 minutes)
-6. Pick your presets and press **Add to garage**
+3. Run the exe and follow the setup: it detects your platform, resolution and game settings,
+   you just confirm them
+4. Let it scan your inventory (about 3 minutes)
+5. Pick your presets and press **Add to garage**
 
-You can change the platform or resolution any time with the **Setup** button.
+Nothing to install. Windows 10 or 11. You can change your answers any time with the **Setup** button.
+
+Windows may warn that the exe is from an unknown publisher, because it isn't code-signed.
+Click **More info → Run anyway**, or run it from source instead (below).
+
+### Run from source
+
+With [Python 3](https://www.python.org/downloads/) installed, double-click `run.bat`.
+To build the exe yourself: `.venv\Scripts\python -m pip install pyinstaller`, then
+`.venv\Scripts\python tools\build_exe.py`.
 
 A preset takes about 25–30 seconds.
 
@@ -78,7 +85,8 @@ rlpreset/     the app
   screen.py     screenshots and text reading
   inputs.py     mouse and keyboard
   game.py       finds the game window, launcher and resolution
-tools/        script that downloads the preset list and pictures
+tools/        scripts to update the preset list and build the exe
+assets/       app icon
 data/         the preset list and pictures
 docs/         notes on the garage menus
 ```

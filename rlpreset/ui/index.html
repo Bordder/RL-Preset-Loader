@@ -21,7 +21,6 @@
     </div>
     <button id="setup-btn" class="btn" title="Platform and resolution">Setup</button>
     <button id="scan-btn" class="btn" title="Checks which pro items you own">Scan inventory</button>
-    <button id="garage-btn" class="btn" title="Reads your garage preset names so nothing gets added twice">Check garage</button>
     <button id="clear-btn" class="btn danger-ghost">Clear all presets</button>
   </header>
 
@@ -41,7 +40,6 @@
         <label class="check"><input type="checkbox" id="s-added"><span class="dot added"></span>Already added</label>
       </div>
       <button id="reset-filters" class="btn small">Reset filters</button>
-      <p class="hint" id="scan-hint"></p>
     </aside>
 
     <section class="results">
@@ -81,9 +79,8 @@
       <h2 id="setup-title">Pro car designs, straight into your garage</h2>
       <p>Pick presets from 375 pro players' cars and the app builds them in your Rocket League garage for you,
         using the items you already own.</p>
-      <p class="note">This is not an item swapper. It never touches the game's files and never changes your
-        own presets; every pro preset goes into a new one.</p>
-      <p class="note">Two quick questions first.</p>
+      <p class="note">Your own presets are never changed: every pro preset goes into a new one.</p>
+      <p class="note">A few quick questions first. Most answers are filled in for you.</p>
     </section>
 
     <section class="step" data-step="1">
@@ -99,10 +96,37 @@
       <h2>What resolution is your game at?</h2>
       <p id="resolution-hint" class="note"></p>
       <div class="choices three" id="resolution-choices"></div>
-      <p class="note">Play in fullscreen or borderless at a 16:9 resolution, with the game set to English.</p>
     </section>
 
     <section class="step" data-step="3">
+      <h2>Game settings</h2>
+      <p class="note">The app reads the game's menus, so it needs these.</p>
+      <div class="group-title">Game language</div>
+      <div class="choices two" id="language-choices">
+        <button class="choice" data-value="english"><span class="choice-name">English</span><span class="tag" hidden>Detected</span></button>
+        <button class="choice" data-value="other"><span class="choice-name">Something else</span><span class="tag warn" hidden>Detected</span></button>
+      </div>
+      <p id="language-warn" class="warn-line" hidden>Switch Rocket League to English (Settings → Interface) before adding presets.</p>
+      <div class="group-title">Display mode</div>
+      <div class="choices three" id="display-choices">
+        <button class="choice" data-value="fullscreen"><span class="choice-name">Fullscreen</span><span class="tag" hidden>Detected</span></button>
+        <button class="choice" data-value="borderless"><span class="choice-name">Borderless</span><span class="tag" hidden>Detected</span></button>
+        <button class="choice" data-value="windowed"><span class="choice-name">Windowed</span><span class="tag warn" hidden>Detected</span></button>
+      </div>
+      <p id="display-warn" class="warn-line" hidden>Windowed can work, but fullscreen or borderless is more reliable.</p>
+    </section>
+
+    <section class="step" data-step="4">
+      <h2>While it's working</h2>
+      <ul class="tips">
+        <li>Keep your hands off the mouse and keyboard: the app is using them.</li>
+        <li>The window shrinks to a small bar in the corner. Press <strong>Stop</strong> there, or hold <strong>F8</strong>, to stop.</li>
+        <li>Each preset takes about 30 seconds. If you don't own an item, the free one is used instead.</li>
+        <li>Presets you already have are skipped, so nothing gets added twice.</li>
+      </ul>
+    </section>
+
+    <section class="step" data-step="5">
       <h2>You're set</h2>
       <p id="summary" class="note"></p>
       <p>Next, scan your inventory so the app can show which presets you can fully make. It takes about

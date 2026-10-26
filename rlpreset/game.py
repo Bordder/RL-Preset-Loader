@@ -18,7 +18,8 @@ except OSError:
     user32.SetProcessDPIAware()
 
 GAME_EXE = "rocketleague.exe"
-STEAM_LAUNCH = "steam://rungameid/252950"
+STEAM_APP_ID = 252950
+STEAM_LAUNCH = f"steam://rungameid/{STEAM_APP_ID}"
 EPIC_LAUNCH = "com.epicgames.launcher://apps/Sugar?action=launch&silent=true"
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -66,23 +67,39 @@ def detect_launcher(hwnd):
     return None
 
 
-def installed_launchers():
-    """Launchers that have Rocket League installed, found without the game running.
-    Steam: its library folders (from the registry). Epic: the launcher's install manifests."""
-    found = []
+def _steam_libraries():
+    """Steam library folders (from the registry and libraryfolders.vdf), or [] without Steam."""
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
             steam = pathlib.Path(winreg.QueryValueEx(key, "SteamPath")[0])
-        libraries = [steam]
-        vdf = steam / "steamapps" / "libraryfolders.vdf"
-        if vdf.exists():
-            libraries += [pathlib.Path(p.replace("\\\\", "\\"))
-                          for p in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(encoding="utf-8", errors="ignore"))]
-        if any((lib / "steamapps" / "common" / "rocketleague").exists() for lib in libraries):
-            found.append("steam")
     except OSError:
-        pass
+        return []
+    libraries = [steam]
+    vdf = steam / "steamapps" / "libraryfolders.vdf"
+    if vdf.exists():
+        libraries += [pathlib.Path(p.replace("\\\\", "\\"))
+                      for p in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(encoding="utf-8", errors="ignore"))]
+    return libraries
+
+
+def steam_language():
+    """The game's language as Steam has it (e.g. 'english'), or None."""
+    for lib in _steam_libraries():
+        manifest = lib / "steamapps" / f"appmanifest_{STEAM_APP_ID}.acf"
+        if manifest.exists():
+            m = re.search(r'"language"\s+"([^"]+)"', manifest.read_text(encoding="utf-8", errors="ignore"))
+            if m:
+                return m.group(1).lower()
+    return None
+
+
+def installed_launchers():
+    """Launchers that have Rocket League installed, found without the game running.
+    Steam: its library folders (from the registry). Epic: the launcher's install manifests."""
+    found = []
+    if any((lib / "steamapps" / "common" / "rocketleague").exists() for lib in _steam_libraries()):
+        found.append("steam")
     manifests = pathlib.Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Epic" / "EpicGamesLauncher" / "Data" / "Manifests"
     for item in manifests.glob("*.item") if manifests.exists() else []:
         try:
@@ -94,13 +111,19 @@ def installed_launchers():
     return found
 
 
-def settings_resolution():
-    """(width, height) from Rocket League's own settings file, or None. Works with the game closed."""
+def _settings_text():
     path = (pathlib.Path(os.environ.get("USERPROFILE", "")) / "Documents" / "My Games" / "Rocket League" /
             "TAGame" / "Config" / "TASystemSettings.ini")
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
+        return None
+
+
+def settings_resolution():
+    """(width, height) from Rocket League's own settings file, or None. Works with the game closed."""
+    text = _settings_text()
+    if not text:
         return None
     x, y = re.search(r"^ResX=(\d+)", text, re.M), re.search(r"^ResY=(\d+)", text, re.M)
     return (int(x.group(1)), int(y.group(1))) if x and y else None
@@ -122,6 +145,62 @@ def client_rect(hwnd):
 def resolution(hwnd):
     left, top, right, bottom = client_rect(hwnd)
     return right - left, bottom - top
+
+
+SWP_NOACTIVATE, SWP_ASYNCWINDOWPOS = 0x0010, 0x4000
+HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+
+
+def own_window(title):
+    """This app's own top-level window (matched by title and by belonging to this process)."""
+    found = []
+    pid = os.getpid()
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def callback(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            if buf.value == title:
+                found.append(hwnd)
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return found[0] if found else None
+
+
+def window_rect(hwnd):
+    rect = wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    return rect.left, rect.top, rect.right, rect.bottom
+
+
+def place_window(hwnd, x, y, width, height, on_top):
+    """Move/resize a window without waiting for it and without giving it focus."""
+    user32.SetWindowPos(wintypes.HWND(hwnd), wintypes.HWND(HWND_TOPMOST if on_top else HWND_NOTOPMOST),
+                        int(x), int(y), int(width), int(height), SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS)
+
+
+def is_foreground(hwnd, settle=0.3):
+    """True if hwnd is still the active window after a short wait."""
+    time.sleep(settle)
+    return user32.GetForegroundWindow() == hwnd
+
+
+def display_mode():
+    """'fullscreen', 'borderless', 'windowed' or None, from the game's settings file."""
+    text = _settings_text()
+    if not text:
+        return None
+    full = re.search(r"^Fullscreen=(\w+)", text, re.M)
+    borderless = re.search(r"^Borderless=(\w+)", text, re.M)
+    if borderless and borderless.group(1).lower() == "true":
+        return "borderless"
+    if full:
+        return "fullscreen" if full.group(1).lower() == "true" else "windowed"
+    return None
 
 
 def focus(hwnd):

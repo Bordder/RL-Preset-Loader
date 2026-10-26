@@ -13,3 +13,7 @@ reference/
 .claude/
 .vscode/
 .idea/
+
+# Build output
+build/
+dist/

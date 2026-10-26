@@ -27,6 +27,7 @@ SECONDS_PER_GARAGE_PRESET = 0.8  # reading the garage list, measured live
 GARAGE_FRESH_SECONDS = 10 * 60
 FULL_SIZE = (1280, 840)
 MINI_SIZE = (440, 150)
+WINDOW_TITLE = "RL Preset Loader"
 CLEAR_CONFIRM_WORD = "DELETE"
 
 # Local web server for the page and the preset pictures. Only these two folders are served.
@@ -110,6 +111,8 @@ class Api:
         if detected and detected not in options:
             options.append(detected)
         return {
+            "language": game.steam_language() if platform == "steam" else None,
+            "display_mode": game.display_mode(),
             "platform": platform, "platform_from": platform_from if platform else None,
             "resolution": detected, "resolution_from": resolution_from if detected else None,
             "resolution_ok": bool(resolution and abs(resolution[0] / resolution[1] - EXPECTED_ASPECT) <= 0.02),
@@ -118,10 +121,13 @@ class Api:
             "inventory_checked": (store.load("inventory") or {}).get("checked_at"),
         }
 
-    def save_setup(self, platform, resolution):
+    def save_setup(self, platform, resolution, language="english", display="fullscreen"):
         if platform not in ("steam", "epic") or not re.fullmatch(r"\d{3,5}x\d{3,5}", resolution or ""):
             return {"ok": False, "error": "Pick a platform and a resolution."}
-        store.save("settings", {"platform": platform, "resolution": resolution, "set_up_at": store.stamp()})
+        if language not in ("english", "other") or display not in ("fullscreen", "borderless", "windowed"):
+            return {"ok": False, "error": "Pick the game's language and display mode."}
+        store.save("settings", {"platform": platform, "resolution": resolution, "language": language,
+                                "display": display, "set_up_at": store.stamp()})
         return {"ok": True}
 
     def launch_game(self, launcher):
@@ -144,9 +150,6 @@ class Api:
         count = sum(len(v) for v in needed.values())
         return self._start("Checking your inventory", count * SECONDS_PER_SCAN_ITEM + 30,
                            lambda g, progress: self._scan(g, needed, progress))
-
-    def start_check_garage(self):
-        return self._start("Checking your garage presets", 60, self._check_garage)
 
     def start_apply(self, ids, skip_added=True):
         chosen = [self._by_id[i] for i in ids if i in self._by_id]
@@ -213,7 +216,13 @@ class Api:
         self._mini(True)
         try:
             progress(title, 0)
-            if not game.focus(hwnd):
+            # Shrinking the window can take focus back a moment later (seen in the .exe), so give it
+            # time to finish, then bring the game forward and check it stays there.
+            time.sleep(0.5)
+            for _ in range(3):
+                if game.focus(hwnd) and game.is_foreground(hwnd):
+                    break
+            else:
                 raise garage.NavigationError("Couldn't bring Rocket League to the front. Click the game, then try again.")
             inputs.set_target_window(hwnd)
             g = garage.Garage(hwnd, lambda text: None, garage.Options(), store.load("inventory"))
@@ -245,9 +254,6 @@ class Api:
         self._garage_read_at = time.monotonic()
         return names
 
-    def _check_garage(self, g, progress):
-        names = self._read_garage(g, progress)
-        return {"message": f"You have {len(names)} presets in your garage."}
 
     def _apply(self, g, chosen, skip_added, progress):
         if not store.load("inventory"):
@@ -314,28 +320,26 @@ class Api:
     # ---------- window ----------
 
     def _mini(self, on):
-        """Shrink to a small always-on-top bar in the top-right corner of the game's screen, or restore."""
-        w = self._window
-        if not w:
+        """Shrink to a small always-on-top bar in the top-right corner of the game's screen, or restore.
+        Done with a direct Windows call rather than pywebview's resize/move/on_top: those wait for
+        the window's own thread and froze the .exe (seen live). This one never waits and never
+        takes focus away from the game."""
+        hwnd = game.own_window(WINDOW_TITLE)
+        if not hwnd:
             return
         if on:
-            self._saved_geometry = (w.x, w.y, w.width, w.height)
-            hwnd = game.find_window()
-            left, top, right, _ = game.client_rect(hwnd) if hwnd else (0, 0, 1920, 1080)
-            w.resize(*MINI_SIZE)
-            w.move(right - MINI_SIZE[0] - 24, top + 24)
-            w.on_top = True
-        else:
-            w.on_top = False
-            if self._saved_geometry:
-                x, y, width, height = self._saved_geometry
-                w.resize(width, height)
-                w.move(x, y)
+            self._saved_geometry = game.window_rect(hwnd)
+            game_hwnd = game.find_window()
+            _, top, right, _ = game.client_rect(game_hwnd) if game_hwnd else (0, 0, 1920, 1080)
+            game.place_window(hwnd, right - MINI_SIZE[0] - 24, top + 24, *MINI_SIZE, on_top=True)
+        elif self._saved_geometry:
+            left, top, right, bottom = self._saved_geometry
+            game.place_window(hwnd, left, top, right - left, bottom - top, on_top=False)
 
 
 def main():
     api = Api()
-    api._window = webview.create_window("RL Preset Loader", server, js_api=api,
+    api._window = webview.create_window(WINDOW_TITLE, server, js_api=api,
                                        width=FULL_SIZE[0], height=FULL_SIZE[1], min_size=(MINI_SIZE[0] - 20, MINI_SIZE[1] - 20),
                                        background_color="#0a1020")
     webview.start(private_mode=True)

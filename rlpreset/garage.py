@@ -6,9 +6,11 @@ from dataclasses import dataclass
 
 from PIL import ImageChops, ImageDraw, ImageStat
 
-from . import game, inputs, layout, screen
+from . import game, inputs, layout, screen, store
 
-DEBUG_DIR = pathlib.Path(__file__).resolve().parent.parent / "debug"
+# Screenshots saved when something goes wrong. Kept with the user's data (not next to the code,
+# which is a temporary folder when running from the .exe).
+DEBUG_DIR = store.DIR / "debug"
 
 # Things that only appear on one screen, used to tell where we are.
 MAIN_MENU_WORDS = ["GARAGE", "SETTINGS", "PROFILE"]
@@ -163,7 +165,7 @@ class Garage:
         inputs.move(*self.to_screen((0.55, 0.97)))
 
     def save_debug(self, label):
-        DEBUG_DIR.mkdir(exist_ok=True)
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
         path = DEBUG_DIR / f"{time.strftime('%H%M%S')}_{label}.png"
         self.frame().save(path)
         return path
@@ -940,7 +942,7 @@ def describe_screen(garage):
     for word in words:
         draw.rectangle([word.left * w, word.top * h, (word.left + word.width) * w, (word.top + word.height) * h],
                        outline="lime", width=2)
-    DEBUG_DIR.mkdir(exist_ok=True)
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
     path = DEBUG_DIR / "check_screen.png"
     img.save(path)
     lines.append(f"Saved marked-up screenshot: {path}")
