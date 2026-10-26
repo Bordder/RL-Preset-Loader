@@ -3,7 +3,7 @@
 import ctypes
 import threading
 import time
-from ctypes import wintypes
+import ctypes.wintypes as wintypes
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 

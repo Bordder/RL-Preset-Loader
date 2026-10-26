@@ -20,7 +20,7 @@ UI_DIR = pathlib.Path(__file__).resolve().parent / "ui"
 EXPECTED_ASPECT = 16 / 9
 # 16:9 resolutions offered on the setup screen (positions are fractions of the screen, so all of these work)
 RESOLUTIONS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3200, 1800), (3840, 2160)]
-SECONDS_PER_PRESET = 28  # measured live on 20+ presets after the speed work
+SECONDS_PER_PRESET = 22  # measured live after the faster screen capture
 SECONDS_PER_SCAN_ITEM = 2
 SECONDS_PER_GARAGE_PRESET = 0.8  # reading the garage list, measured live
 # A garage list read this recently (in this session) is trusted instead of reading it again.
@@ -196,6 +196,7 @@ class Api:
         return {"ok": True}
 
     def _run(self, hwnd, title, estimate, job):
+        game.lower_this_thread_priority()  # text reading is CPU-heavy; let the game go first
         started = time.monotonic()
         state = {"step": title, "fraction": 0.0}
 

@@ -6,7 +6,7 @@ import os
 import pathlib
 import re
 import time
-from ctypes import wintypes
+import ctypes.wintypes as wintypes
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -181,6 +181,14 @@ def place_window(hwnd, x, y, width, height, on_top):
     """Move/resize a window without waiting for it and without giving it focus."""
     user32.SetWindowPos(wintypes.HWND(hwnd), wintypes.HWND(HWND_TOPMOST if on_top else HWND_NOTOPMOST),
                         int(x), int(y), int(width), int(height), SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS)
+
+
+THREAD_PRIORITY_BELOW_NORMAL = -1
+
+
+def lower_this_thread_priority():
+    """Run the calling thread below normal priority, so the game wins when the CPU is busy."""
+    kernel32.SetThreadPriority(kernel32.GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL)
 
 
 def is_foreground(hwnd, settle=0.3):

@@ -44,7 +44,7 @@ presets is the Clear all presets button, and only after you type DELETE to confi
 
 ## Getting started
 
-1. Download **RL Preset Loader.exe** from the [latest release](../../releases/latest)
+1. Download **RL-Preset-Loader.exe** from the [latest release](../../releases/latest)
 2. Start Rocket League and go to the main menu
 3. Run the exe and follow the setup: it detects your platform, resolution and game settings,
    you just confirm them
@@ -62,7 +62,7 @@ With [Python 3](https://www.python.org/downloads/) installed, double-click `run.
 To build the exe yourself: `.venv\Scripts\python -m pip install pyinstaller`, then
 `.venv\Scripts\python tools\build_exe.py`.
 
-A preset takes about 25–30 seconds.
+A preset takes about 15–30 seconds, depending on how many items it changes.
 
 ## Updating the preset list
 

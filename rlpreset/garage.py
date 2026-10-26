@@ -801,7 +801,9 @@ class Garage:
         for extra in (0.0, 0.4):
             if extra:
                 self.wait(extra)
-            if swatch_matches():
+            # Picking a square closes the grid. The swatch colour check is a second sign, but the
+            # finish can shade very dark colours on the swatch (seen live), so a closed grid is enough.
+            if swatch_matches() or not grid_open():
                 self.equipped[team][key] = want
                 return "set", label
         self.save_debug(f"colour_{team}_{part}")

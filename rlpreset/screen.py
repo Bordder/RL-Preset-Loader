@@ -1,6 +1,8 @@
 """Screen capture and text reading (Windows built-in OCR, no extra installs)."""
 
 import asyncio
+import ctypes
+import ctypes.wintypes as wintypes
 import difflib
 import re
 from dataclasses import dataclass
@@ -78,9 +80,57 @@ def read_lines(img, invert=False, scale=UPSCALE, boost_contrast=False):
     return lines
 
 
+class _BitmapInfoHeader(ctypes.Structure):
+    _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+                ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD)]
+
+
+_user32, _gdi32 = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32")
+_HANDLE = ctypes.c_void_p
+for _fn, _args, _ret in [
+    (_user32.GetDC, [_HANDLE], _HANDLE),
+    (_user32.ReleaseDC, [_HANDLE, _HANDLE], ctypes.c_int),
+    (_gdi32.CreateCompatibleDC, [_HANDLE], _HANDLE),
+    (_gdi32.CreateCompatibleBitmap, [_HANDLE, ctypes.c_int, ctypes.c_int], _HANDLE),
+    (_gdi32.SelectObject, [_HANDLE, _HANDLE], _HANDLE),
+    (_gdi32.BitBlt, [_HANDLE] + [ctypes.c_int] * 4 + [_HANDLE, ctypes.c_int, ctypes.c_int, wintypes.DWORD], wintypes.BOOL),
+    (_gdi32.GetDIBits, [_HANDLE, _HANDLE, wintypes.UINT, wintypes.UINT, ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT], ctypes.c_int),
+    (_gdi32.DeleteObject, [_HANDLE], wintypes.BOOL),
+    (_gdi32.DeleteDC, [_HANDLE], wintypes.BOOL),
+]:
+    _fn.argtypes, _fn.restype = _args, _ret
+_SRCCOPY = 0x00CC0020
+
+
 def capture(rect):
-    """Screenshot of (left, top, right, bottom) in screen pixels."""
-    return ImageGrab.grab(bbox=rect, all_screens=True)
+    """Screenshot of (left, top, right, bottom) in screen pixels.
+
+    Copies only that area. PIL's ImageGrab copies every monitor and then crops, which measured
+    ~65 ms per small capture on a 3-monitor PC versus ~3 ms this way, and caused frame drops in the
+    game while the app was polling the screen."""
+    left, top, right, bottom = rect
+    width, height = right - left, bottom - top
+    screen_dc = _user32.GetDC(None)
+    if not screen_dc or width <= 0 or height <= 0:
+        return ImageGrab.grab(bbox=rect, all_screens=True)
+    mem_dc = _gdi32.CreateCompatibleDC(screen_dc)
+    bitmap = _gdi32.CreateCompatibleBitmap(screen_dc, width, height)
+    old = _gdi32.SelectObject(mem_dc, bitmap)
+    try:
+        _gdi32.BitBlt(mem_dc, 0, 0, width, height, screen_dc, left, top, _SRCCOPY)
+        # Negative height = rows top to bottom; 32 bits per pixel, stored as BGRX.
+        info = _BitmapInfoHeader(ctypes.sizeof(_BitmapInfoHeader), width, -height, 1, 32, 0, 0, 0, 0, 0, 0)
+        buffer = ctypes.create_string_buffer(width * height * 4)
+        if not _gdi32.GetDIBits(mem_dc, bitmap, 0, height, buffer, ctypes.byref(info), 0):
+            return ImageGrab.grab(bbox=rect, all_screens=True)
+        return Image.frombuffer("RGB", (width, height), buffer, "raw", "BGRX", 0, 1)
+    finally:
+        _gdi32.SelectObject(mem_dc, old)
+        _gdi32.DeleteObject(bitmap)
+        _gdi32.DeleteDC(mem_dc)
+        _user32.ReleaseDC(None, screen_dc)
 
 
 def normalize(text):
