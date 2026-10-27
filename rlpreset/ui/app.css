@@ -142,6 +142,25 @@ select:focus, input:focus, .btn:focus-visible { outline: 2px solid var(--blue); 
 .badge.partial { color: var(--amber); background: rgba(255, 197, 61, 0.12); }
 .badge.cant { color: var(--red); background: rgba(255, 90, 95, 0.12); }
 .badge.added { color: #8cc0ff; background: var(--blue-soft); }
+.badge.full, .badge.partial, .badge.cant { cursor: help; }
+
+/* have / missing list, over the pictures while the badge is hovered */
+.parts {
+  display: none; position: absolute; z-index: 2; top: 8px; left: 8px; right: 8px; bottom: 34px;
+  margin: 0; padding: 6px 8px; list-style: none; overflow-y: auto;
+  background: rgba(8, 14, 28, 0.95); border: 1px solid var(--line-strong); border-radius: 6px;
+  font-size: 12px;
+}
+.card:has(.badge:hover) .parts { display: block; }
+.parts li { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+.parts .mark { width: 12px; flex: none; font-weight: 700; text-align: center; }
+.parts .slot { width: 92px; flex: none; color: var(--text-faint); text-transform: capitalize; }
+.parts .item { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.parts .note { margin-left: auto; padding-left: 6px; flex: none; color: var(--text-faint); font-size: 11px; }
+.parts .yes .mark { color: var(--green); }
+.parts .swap .mark, .parts .swap .note { color: var(--amber); }
+.parts .no .mark, .parts .need .mark, .parts .need .note { color: var(--red); }
+.parts .no .item, .parts .need .item { color: var(--text-dim); }
 
 .credit { font-size: 12px; color: var(--text-faint); }
 

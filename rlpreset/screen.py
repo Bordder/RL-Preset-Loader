@@ -150,9 +150,15 @@ def capture(rect):
         _user32.ReleaseDC(None, screen_dc)
 
 
+def fix_zeros(text):
+    """The game draws zero with a slash, so OCR reads the 0 in '20XX' as Ø or O: put it back."""
+    text = re.sub("[Øø]", "0", text)
+    return re.sub(r"(?<=\d)[Oo]", "0", text)
+
+
 def normalize(text):
     """Lower-case, letters and digits only, so 'Laser Wave III' == 'LASER WAVE lll'-ish OCR output."""
-    text = text.lower().replace("’", "'")
+    text = fix_zeros(text).lower().replace("’", "'")
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 

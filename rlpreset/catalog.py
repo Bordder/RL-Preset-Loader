@@ -119,13 +119,19 @@ def ownership(preset, inventory):
     missing_decals = {(n, p) for n, p in inventory.get("missing_decals", [])}
     checks = {}
     swappable = set()  # missing, but used in another paint
+    teams = {}  # which team(s) use each checked item
+
+    def check(team, key, ok):
+        checks[key] = ok
+        teams.setdefault(key, set()).add(team)
+
     for team in ("blue", "orange"):
         decal = preset[team].get("decal")
         owned_decal = decal_owned(inventory, preset[team].get("body"), decal)
         if owned_decal is None and decal and (screen.normalize(decal["name"]), decal["paint"]) in missing_decals:
             owned_decal = False
         if owned_decal is not None and decal and screen.normalize(decal["name"]) != "none":
-            checks[("decal", decal["name"], decal["paint"])] = owned_decal is True
+            check(team, ("decal", decal["name"], decal["paint"]), owned_decal is True)
             if owned_decal == "other paint":
                 swappable.add(("decal", decal["name"], decal["paint"]))
         for slot in garage.SCANNED_SLOTS:
@@ -133,21 +139,51 @@ def ownership(preset, inventory):
             if not item or slot not in items:
                 continue
             ok = _is_free_default(slot, item) or garage.owns(items[slot], item["name"], item["paint"])
-            checks[(slot, item["name"], item["paint"])] = ok
+            check(team, (slot, item["name"], item["paint"]), ok)
             if slot == "body" and not ok and item["paint"] and garage.owns(items[slot], item["name"], None):
                 swappable.add((slot, item["name"], item["paint"]))  # the unpainted body gets used
         for part in ("primary", "accent"):
             finish = preset[team].get(f"{part}_finish")
             if finish and finishes.get(part):
                 ok = any(screen.similarity(f, finish) >= 0.85 for f in finishes[part])
-                checks[(f"{part} finish", finish, None)] = ok
+                check(team, (f"{part} finish", finish, None), ok)
     missing = [garage.item_label(name, paint) for (slot, name, paint), ok in checks.items() if not ok]
     owned = sum(checks.values())
     # Without its body or its decal a preset isn't really that preset, so it isn't made.
     essential_missing = any(not ok for key, ok in checks.items()
                             if key[0] in ("body", "decal") and key not in swappable)
     status = "cant" if essential_missing else "full" if owned == len(checks) else "partial"
-    return {"status": status, "owned": owned, "total": len(checks), "missing": missing}
+    return {"status": status, "owned": owned, "total": len(checks), "missing": missing,
+            "parts": _parts(checks, swappable, teams)}
+
+
+def _parts(checks, swappable, teams):
+    """Each checked item for the card's hover list: {"slot", "item", "have", "note"}.
+    have is yes / swap (something close gets used) / no (the free default gets used) /
+    need (the preset can't be made without it)."""
+    parts = []
+    for key, ok in checks.items():
+        slot, name, paint = key
+        if ok:
+            have, note = "yes", ""
+        elif key in swappable:
+            have = "swap"
+            note = "other paint used" if slot == "decal" else f"plain {name} used"
+        elif slot in ("body", "decal"):
+            have, note = "need", "can't make without it"
+        else:
+            default = layout.DEFAULT_FINISH if slot.endswith("finish") else layout.DEFAULT_ITEMS.get(slot)
+            have, note = "no", f"{default} used" if default else "left as is"
+        if len(teams.get(key, ())) == 1:
+            slot = f"{slot} ({next(iter(teams[key]))})"  # blue and orange differ here
+        parts.append({"slot": slot.replace("_", " "), "item": garage.item_label(name, paint),
+                      "have": have, "note": note})
+    order = ["body", "decal", "wheels", "boost", "trail", "goal explosion", "primary finish", "accent finish"]
+    def place(p):
+        base = p["slot"].split(" (")[0]
+        return order.index(base) if base in order else len(order)
+    parts.sort(key=place)
+    return parts
 
 
 def already_added(preset, garage_names):

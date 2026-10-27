@@ -46,7 +46,8 @@ def same_item(seen, wanted):
     """True if a name read off a tile is this item: as read, or without stray badge words
     (so "ISKY Affluenter" is Affluenter, while a real "Black Market" still matches itself).
     Numbers must agree: "S14 Champion" is close in spelling to "S13 Champion" but isn't it."""
-    seen_numbers, wanted_numbers = set(re.findall(r"\d+", seen)), set(re.findall(r"\d+", wanted))
+    seen_numbers = set(re.findall(r"\d+", screen.fix_zeros(seen)))
+    wanted_numbers = set(re.findall(r"\d+", wanted))
     if seen_numbers and wanted_numbers and not wanted_numbers <= seen_numbers:
         return False
     return max(screen.name_score(seen, wanted), screen.name_score(strip_badge_words(seen), wanted)) >= 0.82

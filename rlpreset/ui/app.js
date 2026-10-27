@@ -99,12 +99,23 @@ function badge(p) {
   return null;
 }
 
+// What the user has and hasn't got for this preset, shown over the pictures while hovering the badge.
+function partsList(p) {
+  const parts = p.ownership.parts || [];
+  if (!parts.length) return null;
+  const marks = { yes: "✓", swap: "~", no: "✗", need: "✗" };
+  return el("ul", { class: "parts" }, ...parts.map((x) => el("li", { class: x.have },
+    el("span", { class: "mark", text: marks[x.have] }),
+    el("span", { class: "slot", text: x.slot }),
+    el("span", { class: "item", text: x.item }),
+    x.note ? el("span", { class: "note", text: x.note }) : null)));
+}
+
 function card(p) {
   const node = el("div", { class: "card", tabindex: "0", role: "checkbox", "data-id": p.id });
   const items = [p.body, p.wheels, p.boost].filter(Boolean).join(" · ");
-  const missing = p.ownership.missing.length ? `Missing: ${p.ownership.missing.join(", ")}` : "";
-  node.title = missing;
   node.append(
+    partsList(p),
     el("div", { class: "cars" }, carImage(p, "blue"), carImage(p, "orange")),
     el("div", { class: "card-title" }, el("span", { class: "name", text: p.name }), el("span", { class: "tick" })),
     el("div", { class: "card-meta" }, badge(p), el("span", { class: "items", text: items })),
