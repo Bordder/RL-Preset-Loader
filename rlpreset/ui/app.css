@@ -214,6 +214,8 @@ body.mini { overflow: hidden; }
 .choice.selected { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; background: var(--blue-soft); }
 .choice-name { font-weight: 600; font-size: 15px; white-space: nowrap; }
 .choices.three .choice { padding: 16px 12px; }
+.choice.custom { justify-content: flex-start; gap: 6px; color: var(--text-dim); }
+.choice.custom input { width: 0; flex: 1; min-width: 0; padding: 4px 6px; font-weight: 600; font-size: 14px; text-align: center; }
 .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; color: var(--green); background: rgba(57, 217, 138, 0.12); }
 .tag.warn { color: var(--amber); background: rgba(255, 197, 61, 0.12); }
 .setup-card .group-title { margin-top: 6px; }

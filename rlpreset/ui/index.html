@@ -59,8 +59,7 @@
   </div>
 
   <footer class="bottombar">
-    <span id="selected-info">Nothing selected</span>
-    <label class="check inline"><input type="checkbox" id="skip-added" checked>Skip presets I already have</label>
+    <span id="selected-info"></span>
     <div class="spacer"></div>
     <span class="credit">Built by bordder · Presets from the RLCS Pro Preset Database by Hodge</span>
     <button id="apply-btn" class="btn primary" disabled>Add to garage</button>
@@ -83,8 +82,7 @@
       <h2 id="setup-title">Pro car designs, straight into your garage</h2>
       <p>Pick presets from 375 pro players' cars and the app builds them in your Rocket League garage for you,
         using the items you already own.</p>
-      <p class="note">Your own presets are never changed: every pro preset goes into a new one.</p>
-      <p class="note">A few quick questions first. Most answers are filled in for you.</p>
+      <p class="note">Let's get your game set up first. It only takes a minute, and most of it is already filled in for you.</p>
     </section>
 
     <section class="step" data-step="1">
@@ -100,6 +98,7 @@
       <h2>What resolution is your game at?</h2>
       <p id="resolution-hint" class="note"></p>
       <div class="choices three" id="resolution-choices"></div>
+      <p id="resolution-warn" class="warn-line" hidden>That isn't 16:9. Switch the game to a 16:9 resolution before adding presets.</p>
     </section>
 
     <section class="step" data-step="3">

@@ -17,7 +17,7 @@ try:
     if _log_path.stat().st_size > 1_000_000:
         _log_path.unlink()
 except OSError:
-    pass
+    pass  # can't check or trim the log: keep adding to it
 _log = open(_log_path, "a", encoding="utf-8", buffering=1)
 _log.write(f"\n=== started {time.strftime('%Y-%m-%d %H:%M:%S')} pid {os.getpid()} ===\n")
 faulthandler.enable(_log)

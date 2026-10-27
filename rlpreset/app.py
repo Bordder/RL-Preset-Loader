@@ -18,8 +18,9 @@ from . import catalog, game, garage, inputs, store
 
 UI_DIR = pathlib.Path(__file__).resolve().parent / "ui"
 EXPECTED_ASPECT = 16 / 9
-# 16:9 resolutions offered on the setup screen (positions are fractions of the screen, so all of these work)
-RESOLUTIONS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3200, 1800), (3840, 2160)]
+# 16:9 resolutions offered on the setup screen (positions are fractions of the screen, so all of these work).
+# Anything else goes in the setup screen's Custom box.
+RESOLUTIONS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)]
 SECONDS_PER_PRESET = 22  # measured live after the faster screen capture
 SECONDS_PER_SCAN_ITEM = 2
 SECONDS_PER_GARAGE_PRESET = 0.8  # reading the garage list, measured live
@@ -115,8 +116,6 @@ class Api:
             resolution_from = "your Rocket League settings" if resolution else None
         options = [f"{w}x{h}" for w, h in RESOLUTIONS]
         detected = f"{resolution[0]}x{resolution[1]}" if resolution else None
-        if detected and detected not in options:
-            options.append(detected)
         return {
             "language": game.steam_language() if platform == "steam" else None,
             "display_mode": game.display_mode(),

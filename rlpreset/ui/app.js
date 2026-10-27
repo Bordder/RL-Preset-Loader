@@ -137,7 +137,7 @@ function updateSelectionInfo() {
   const n = state.selected.size;
   $("selected-info").textContent = n
     ? `${n} selected · ${minutes(n * state.secondsPerPreset)}`
-    : "Nothing selected";
+    : "";
   $("apply-btn").disabled = n === 0;
 }
 
@@ -243,13 +243,12 @@ function showReport(r) {
 
 function confirmApply() {
   const n = state.selected.size;
-  const skip = $("skip-added").checked;
   openModal(`Add ${n} preset${n === 1 ? "" : "s"}?`, [
     el("p", { text: `This takes ${minutes(n * state.secondsPerPreset)}. Each one goes into a new garage preset; your own presets aren't changed.` }),
     el("p", { text: "Keep your hands off the mouse and keyboard while it runs. Press Stop or F8 to stop." }),
   ], [
     button("Cancel", "", closeModal),
-    button("Start", "primary", () => { closeModal(); startJob(api().start_apply([...state.selected], skip)); }),
+    button("Start", "primary", () => { closeModal(); startJob(api().start_apply([...state.selected], true)); }),
   ]);
 }
 
@@ -266,8 +265,7 @@ function confirmClear() {
     startJob(api().start_clear_all(input.value));
   });
   openModal("Clear all presets?", [
-    el("div", { class: "warn-box", text: "This deletes every preset in your Rocket League garage, including ones you made yourself. It can't be undone." }),
-    el("p", { text: "Your items stay in your inventory; only the presets go. Type DELETE to confirm." }),
+    el("div", { class: "warn-box", text: "This deletes every preset in your Rocket League garage, including ones you made yourself. It can't be undone. Type DELETE to confirm." }),
     input, error,
   ], [button("Cancel", "", closeModal), go]);
   input.focus();
@@ -275,7 +273,7 @@ function confirmClear() {
 
 // ---------- setup screens ----------
 
-const setup = { step: 0, steps: 6, platform: null, resolution: null, language: null, display: null, info: null };
+const setup = { step: 0, steps: 6, platform: null, resolution: null, custom: false, language: null, display: null, info: null };
 
 function pretty(res) { return res.replace("x", " × "); }
 
@@ -299,20 +297,36 @@ async function openSetup() {
     ? `Detected ${info.platform === "steam" ? "Steam" : "Epic Games"} from ${info.platform_from}. Change it if that's wrong.`
     : "Couldn't detect it, so pick one. Starting the game first lets the app detect it.";
 
-  $("resolution-choices").replaceChildren(...info.resolutions.map((r) => {
+  // The listed 16:9 sizes, then a Custom box for anything else (filled in when that's what was found).
+  const detectedTag = () => el("span", { class: "tag", text: "Detected" });
+  const choices = info.resolutions.map((r) => {
     const b = el("button", { class: "choice", "data-value": r }, el("span", { class: "choice-name", text: pretty(r) }));
-    if (r === info.resolution) {
-      b.append(el("span", { class: `tag${info.resolution_ok ? "" : " warn"}`, text: info.resolution_ok ? "Detected" : "Not 16:9" }));
-    }
+    if (r === info.resolution) b.append(detectedTag());
     return b;
-  }));
+  });
+  setup.custom = Boolean(setup.resolution) && !info.resolutions.includes(setup.resolution);
+  const [w, h] = setup.custom ? setup.resolution.split("x") : ["", ""];
+  const size = (id, label, value) => el("input", { type: "text", id, value, placeholder: label, inputmode: "numeric", maxlength: "5", "aria-label": label });
+  choices.push(el("div", { class: "choice custom", "data-value": "custom" },
+    size("custom-width", "Width", w), el("span", { text: "×" }), size("custom-height", "Height", h)));
+  $("resolution-choices").replaceChildren(...choices);
   $("resolution-hint").textContent = info.resolution
-    ? `Detected ${pretty(info.resolution)} from ${info.resolution_from}.` +
-      (info.resolution_ok ? "" : " That isn't 16:9, so switch the game to one of the 16:9 options.")
-    : "Couldn't detect it, so pick the one your game uses.";
+    ? `Detected ${pretty(info.resolution)} from ${info.resolution_from}.`
+    : "Couldn't detect it, so pick the one your game uses, or type it in the last box.";
 
   $("setup").hidden = false;
   showStep();
+}
+
+function isWide(res) {
+  const [w, h] = res.split("x").map(Number);
+  return Math.abs(w / h - 16 / 9) <= 0.02;
+}
+
+function readCustomSize() {
+  const w = $("custom-width").value.trim(), h = $("custom-height").value.trim();
+  const ok = /^\d{3,5}$/.test(w) && /^\d{3,5}$/.test(h);
+  setup.resolution = ok ? `${w}x${h}` : null;
 }
 
 function markDetected(listId, value) {
@@ -323,7 +337,10 @@ function showStep() {
   for (const s of document.querySelectorAll(".step")) s.hidden = Number(s.dataset.step) !== setup.step;
   $("setup-dots").replaceChildren(...Array.from({ length: setup.steps }, (_, i) => el("span", { class: i <= setup.step ? "on" : "" })));
   for (const b of $("platform-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.platform);
-  for (const b of $("resolution-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.resolution);
+  for (const b of $("resolution-choices").querySelectorAll(".choice")) {
+    b.classList.toggle("selected", setup.custom ? b.dataset.value === "custom" : b.dataset.value === setup.resolution);
+  }
+  $("resolution-warn").hidden = !setup.resolution || isWide(setup.resolution);
   for (const b of $("language-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.language);
   for (const b of $("display-choices").querySelectorAll(".choice")) b.classList.toggle("selected", b.dataset.value === setup.display);
   $("language-warn").hidden = setup.language !== "other";
@@ -355,7 +372,22 @@ function wireSetup() {
   });
   $("resolution-choices").addEventListener("click", (e) => {
     const b = e.target.closest(".choice");
-    if (b) { setup.resolution = b.dataset.value; showStep(); }
+    if (!b) return;
+    setup.custom = b.dataset.value === "custom";
+    if (setup.custom) {
+      readCustomSize();
+      if (e.target.tagName !== "INPUT") $("custom-width").focus();
+    } else {
+      setup.resolution = b.dataset.value;
+    }
+    showStep();
+  });
+  $("resolution-choices").addEventListener("input", (e) => {
+    if (e.target.tagName !== "INPUT") return;
+    e.target.value = e.target.value.replace(/\D/g, "");
+    setup.custom = true;
+    readCustomSize();
+    showStep();
   });
   for (const [id, key] of [["language-choices", "language"], ["display-choices", "display"]]) {
     $(id).addEventListener("click", (e) => {

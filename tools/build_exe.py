@@ -8,7 +8,6 @@ list and the pictures. The user just runs it.
 """
 
 import pathlib
-import sys
 
 import PyInstaller.__main__
 
@@ -37,4 +36,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

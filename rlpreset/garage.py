@@ -1,7 +1,6 @@
 """Drives the Rocket League garage: find screens, switch tabs, search items, click them."""
 
 import math
-import pathlib
 import time
 from dataclasses import dataclass
 
@@ -338,7 +337,7 @@ class Garage:
     def _set_interface_settings_once(self, interface, display):
         self.go_to_garage()
         inputs.press("esc")  # garage -> main menu (same as BACK)
-        where, words = self.wait_for_screen("main_menu")
+        self.wait_for_screen("main_menu")
         self.wait(1.5)  # the menu slides in
         self.grab()
         where, words = self.which_screen()
