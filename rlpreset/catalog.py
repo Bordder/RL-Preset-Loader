@@ -48,6 +48,46 @@ def needed_decals(presets):
     return {body: sorted(names) for body, names in sorted(needed.items())}
 
 
+def _wanted(presets):
+    """Every (name, paint) the presets use: {slot: {name: {paints}}} and {body: {decal: {paints}}}."""
+    items, decals = {}, {}
+    for p in presets:
+        for team in ("blue", "orange"):
+            for slot in garage.SCANNED_SLOTS:
+                item = p[team].get(slot)
+                if item and screen.normalize(item["name"]) != "none":
+                    items.setdefault(slot, {}).setdefault(item["name"], set()).add(item["paint"])
+            body, decal = p[team].get("body"), p[team].get("decal")
+            if body and decal and screen.normalize(decal["name"]) != "none":
+                decals.setdefault(body["name"], {}).setdefault(decal["name"], set()).add(decal["paint"])
+    return items, decals
+
+
+def still_to_check(presets, inventory):
+    """What a new-items check searches for: only items the last scan didn't find in every paint
+    the presets use. Items already found are kept from the last scan.
+    Returns (needed, decals_needed) in the same shapes as needed_items / needed_decals."""
+    items, decals = _wanted(presets)
+    known_items = inventory.get("items") or {}
+    known_decals = inventory.get("decals") or {}
+
+    def missing_some(owned, name, paints):
+        return any(not garage.owns(owned, name, paint) for paint in paints)
+
+    needed = {}
+    for slot, names in items.items():
+        todo = sorted(n for n, paints in names.items() if missing_some(known_items.get(slot, []), n, paints))
+        if todo:
+            needed[slot] = todo
+    decals_needed = {}
+    for body, names in sorted(decals.items()):
+        owned = known_decals.get(screen.normalize(body), [])
+        todo = sorted(n for n, paints in names.items() if missing_some(owned, n, paints))
+        if todo:
+            decals_needed[body] = todo
+    return needed, decals_needed
+
+
 def decal_owned(inventory, body, decal):
     """True / "other paint" / False from the inventory scan's decal check, or None if that body
     wasn't checked."""
@@ -94,6 +134,8 @@ def ownership(preset, inventory):
                 continue
             ok = _is_free_default(slot, item) or garage.owns(items[slot], item["name"], item["paint"])
             checks[(slot, item["name"], item["paint"])] = ok
+            if slot == "body" and not ok and item["paint"] and garage.owns(items[slot], item["name"], None):
+                swappable.add((slot, item["name"], item["paint"]))  # the unpainted body gets used
         for part in ("primary", "accent"):
             finish = preset[team].get(f"{part}_finish")
             if finish and finishes.get(part):

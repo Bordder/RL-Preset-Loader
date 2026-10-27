@@ -22,7 +22,9 @@ EXPECTED_ASPECT = 16 / 9
 # Anything else goes in the setup screen's Custom box.
 RESOLUTIONS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)]
 SECONDS_PER_PRESET = 22  # measured live after the faster screen capture
-SECONDS_PER_SCAN_ITEM = 2
+SECONDS_PER_SCAN_ITEM = 3.3  # one search, measured live
+SECONDS_PER_SCAN_LIST = 20  # reading a whole item list instead (wheels ~32s, trails ~9s, live)
+SECONDS_PER_SCAN_BODY = 30  # one body's decal list, with the body switch (live)
 SECONDS_PER_GARAGE_PRESET = 0.8  # reading the garage list, measured live
 # A garage list read this recently (in this session) is trusted instead of reading it again.
 GARAGE_FRESH_SECONDS = 10 * 60
@@ -161,12 +163,23 @@ class Api:
         return dict(self._job)
 
     def start_scan(self):
-        return self._start("Checking your inventory", self._scan_seconds(), self._scan)
+        # After the first full scan, only items that weren't found last time are searched again:
+        # that's how a newly unlocked item gets picked up without minutes of searching.
+        title = "Checking for new items" if _inventory() else "Checking your inventory"
+        return self._start(title, self._scan_seconds(), self._scan)
+
+    def _scan_plan(self):
+        """(needed items, needed decals, earlier scan to keep) for the next scan."""
+        inventory = _inventory()
+        if inventory:
+            return (*catalog.still_to_check(self._presets, inventory), inventory)
+        return catalog.needed_items(self._presets), catalog.needed_decals(self._presets), None
 
     def _scan_seconds(self):
-        items = sum(len(v) for v in catalog.needed_items(self._presets).values())
-        decals = catalog.needed_decals(self._presets)
-        return (items + sum(len(v) for v in decals.values())) * SECONDS_PER_SCAN_ITEM + len(decals) * 4 + 40
+        needed, decals, _ = self._scan_plan()
+        items = sum(SECONDS_PER_SCAN_LIST if len(names) >= garage.Garage.BROWSE_MIN_NAMES
+                    else len(names) * SECONDS_PER_SCAN_ITEM for names in needed.values())
+        return round(items + len(decals) * SECONDS_PER_SCAN_BODY + 30)
 
     def start_apply(self, ids, skip_added=True):
         chosen = [self._by_id[i] for i in ids if i in self._by_id]
@@ -277,13 +290,19 @@ class Api:
                                  f"Settings > Interface if you like.")
 
     def _scan(self, g, progress):
-        inventory = g.scan_inventory(catalog.needed_items(self._presets), progress,
-                                     catalog.needed_decals(self._presets))
+        needed, decals_needed, known = self._scan_plan()
+        inventory = g.scan_inventory(needed, progress, decals_needed, known)
         inventory["checked_at"] = store.stamp()
         inventory["missing_decals"] = []  # learned again while adding presets
         store.save("inventory", inventory)
-        owned = sum(len(v) for v in inventory["items"].values())
-        decals = sum(len(v) for v in inventory["decals"].values())
+
+        def count(inv, key):
+            return sum(len(v) for v in ((inv or {}).get(key) or {}).values())
+
+        owned, decals = count(inventory, "items"), count(inventory, "decals")
+        if known:
+            new = owned - count(known, "items") + decals - count(known, "decals")
+            return {"message": f"Found {new} new item{'' if new == 1 else 's'}." if new else "No new items found."}
         return {"message": f"Found {owned} matching items, {decals} decals and "
                            f"{len(set().union(*inventory['finishes'].values()))} paint finishes."}
 
