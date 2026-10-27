@@ -216,7 +216,8 @@ class Api:
         """(needed items, needed decals, earlier scan to keep) for the next scan."""
         inventory = _inventory()
         if inventory:
-            return (*catalog.still_to_check(self._presets, inventory), inventory)
+            needed, decals = catalog.still_to_check(self._presets, inventory)
+            return needed, decals, inventory
         return catalog.needed_items(self._presets), catalog.needed_decals(self._presets), None
 
     def _scan_seconds(self):
