@@ -22,6 +22,7 @@ import html.parser
 import io
 import json
 import pathlib
+import re
 import statistics
 import sys
 import urllib.parse
@@ -72,8 +73,17 @@ FINISH_SLOTS = [
 ]
 
 
+# Misspelled words seen in the sheet's item and finish names. Without this the same item gets
+# searched twice ("Cristiano: Anodized" and "Cristiano: Anodzied").
+WORD_FIXES = {"anodzied": "Anodized", "peark": "Pearl", "puple": "Purple"}
+
+
 def clean(text):
     return " ".join(text.split())
+
+
+def fix_words(text):
+    return re.sub(r"[A-Za-z]+", lambda m: WORD_FIXES.get(m.group().lower(), m.group()), text)
 
 
 def load_rows(csv_path=None):
@@ -85,7 +95,13 @@ def load_rows(csv_path=None):
     rows = list(csv.reader(io.StringIO(text)))
     header_index = next(i for i, r in enumerate(rows) if r and r[0].strip() == "Player")
     header = [clean(h) for h in rows[header_index]]
-    return [dict(zip(header, map(clean, r))) for r in rows[header_index + 1:] if r and r[0].strip()]
+    named = [col for col, _, _ in ITEM_SLOTS] + [col for col, _ in FINISH_SLOTS]
+    out = []
+    for r in rows[header_index + 1:]:
+        if r and r[0].strip():
+            row = dict(zip(header, map(clean, r)))
+            out.append({k: fix_words(v) if k in named else v for k, v in row.items()})
+    return out
 
 
 class _SheetPage(html.parser.HTMLParser):
@@ -161,16 +177,32 @@ def build_spelling_map(rows):
     return {key: c.most_common(1)[0][0] for key, c in counts.items()}
 
 
+# Colour words some rows use instead of the game's paint names, plus typos seen in the sheet.
+COLOUR_WORDS = {"puple": "purple", "yellow": "saffron", "blue": "cobalt", "green": "forest green",
+                "red": "crimson", "white": "titanium white", "brown": "burnt sienna", "gray": "grey"}
+
+
 def split_paint_from_name(name, paint, known_names):
-    """Some rows put the paint in the item name ("Standard Purple", paint empty). Split it off,
-    but only when the rest is an item name seen elsewhere in the sheet, e.g. "Standard"."""
+    """Some rows put the paint in the item name ("Standard Purple", "Standard Puple", "Standard
+    Yellow"; paint empty). Split it off, but only when the rest is an item name seen elsewhere in
+    the sheet, e.g. "Standard"."""
     if paint:
         return name, paint
-    for p in PAINT_LOOKUP:
-        if name.lower().endswith(" " + p):
-            base = name[: -len(p) - 1].strip()
-            if base.lower() in known_names:
-                return base, p
+    words = name.lower().split()
+    for take in (2, 1):  # two-word paints first ("sky blue", "forest green")
+        if len(words) <= take:
+            continue
+        tail = " ".join(words[-take:])
+        tail = COLOUR_WORDS.get(tail, tail)
+        base = " ".join(name.split()[:-take])
+        if tail in PAINT_LOOKUP and base.lower() in known_names:
+            return base, tail
+        # ...or in front of it ("Pink Standard")
+        head = " ".join(words[:take])
+        head = COLOUR_WORDS.get(head, head)
+        rest = " ".join(name.split()[take:])
+        if head in PAINT_LOOKUP and rest.lower() in known_names:
+            return rest, head
     return name, paint
 
 

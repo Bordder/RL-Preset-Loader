@@ -178,6 +178,13 @@ body.mini { overflow: hidden; }
 .tag.already { color: #8cc0ff; }
 .tag.skipped, .tag.error { color: var(--red); }
 
+/* shown until the app is ready */
+.loading {
+  position: fixed; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px; color: var(--text-dim);
+}
+.loading p { margin: 0; font-size: 13px; }
+
 /* setup screens */
 .setup {
   position: fixed; inset: 0; background: var(--bg);

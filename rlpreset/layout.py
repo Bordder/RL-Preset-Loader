@@ -1,10 +1,44 @@
 """Where things are on screen, as fractions of the game picture (0..1), so any 16:9 resolution works.
 
-Measured from the user's 1440p English screenshots in reference/screenshots/.
+Measured from the user's 1440p English screenshots in reference/screenshots/, at Interface Scale
+100% and Display Scale 90%. scaled() moves them for other settings.
 """
 
-# Region the menus live in (left side of the screen). Reading less of the screen is faster.
-MENU_REGION = (0.0, 0.10, 0.40, 0.95)
+MEASURED_INTERFACE_SCALE = 1.0
+MEASURED_DISPLAY_SCALE = 0.9
+
+
+def scaled(value, anchor, interface, display):
+    """Move one coordinate measured at the settings above to where it is at other settings (seen live):
+    Display Scale shrinks the whole interface toward the middle of the screen, then Interface Scale
+    shrinks each menu toward the corner it's pinned to (anchor 0 = left/top, 1 = right/bottom)."""
+    u = (value - (1 - MEASURED_DISPLAY_SCALE) / 2) / MEASURED_DISPLAY_SCALE
+    u = anchor + interface / MEASURED_INTERFACE_SCALE * (u - anchor)
+    return (1 - display) / 2 + display * u
+
+
+def unscaled(value, anchor, interface, display):
+    """The opposite of scaled()."""
+    u = (value - (1 - display) / 2) / display
+    u = anchor + (u - anchor) * MEASURED_INTERFACE_SCALE / interface
+    return (1 - MEASURED_DISPLAY_SCALE) / 2 + MEASURED_DISPLAY_SCALE * u
+
+
+# Menu text size (relative to the measured settings at 1440p) below which the text reader starts
+# misreading item names and paints. Tested: fine at 0.83 (75% interface, 100% display), mostly fine
+# at 0.65, unusable at 0.5.
+MIN_TEXT_SIZE = 0.72
+MEASURED_HEIGHT = 1440
+
+# Garage menu labels used to measure the player's scale: left edge, and the centre of each line.
+SCALE_LABELS_LEFT = 0.0730
+SCALE_LABELS_Y = {
+    "CUSTOMIZE CAR": 0.5580, "CREATE NEW PRESET": 0.6018, "TRADE IN": 0.6455,
+    "MANAGE INVENTORY": 0.6893, "BLUEPRINTS": 0.7330,
+}
+
+# Region the menus live in (left side of the screen), read as is, before the scale is known.
+MENU_REGION = (0.0, 0.0, 0.45, 1.0)
 
 # Garage screen
 PRESET_TITLE_REGION = (0.07, 0.48, 0.27, 0.535)

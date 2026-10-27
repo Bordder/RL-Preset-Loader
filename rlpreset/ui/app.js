@@ -187,7 +187,9 @@ async function onDone(r) {
   await load();
   if (r.report) return showReport(r);
   const title = r.stopped ? "Stopped" : r.error ? "Something went wrong" : r.title;
-  showMessage(title, r.stopped || r.error || r.message || "Done.");
+  const body = [el("p", { text: r.stopped || r.error || r.message || "Done." })];
+  if (r.warning) body.push(el("p", { class: "warn-box", text: r.warning }));
+  openModal(title, body, [button("OK", "primary", closeModal)]);
 }
 
 // ---------- modals ----------
@@ -234,6 +236,7 @@ function showReport(r) {
   const body = [el("p", { text: `${summary.join(" · ")} in ${minutes(r.seconds)}.` })];
   if (r.stopped) body.unshift(el("p", { class: "warn-box", text: `Stopped early: ${r.stopped}` }));
   if (r.error) body.unshift(el("p", { class: "warn-box", text: r.error }));
+  if (r.warning) body.push(el("p", { class: "warn-box", text: r.warning }));
   body.push(list);
   openModal("Results", body, [button("Done", "primary", closeModal)]);
 }
@@ -410,10 +413,25 @@ function wire() {
   }, 5000);
 }
 
+// If start-up stalls, say so instead of leaving an empty window.
+const startTimer = setTimeout(() => {
+  $("loading-text").textContent = "This is taking longer than usual. If nothing shows up, close the app and open it again.";
+}, 15000);
+
+function reportError(message) {
+  try { window.pywebview.api.log_error(String(message).slice(0, 500)); } catch (e) { /* not ready yet */ }
+}
+window.addEventListener("error", (e) => reportError(`${e.message} (${e.filename}:${e.lineno})`));
+window.addEventListener("unhandledrejection", (e) => reportError(e.reason));
+
 window.addEventListener("pywebviewready", async () => {
   wire();
   wireSetup();
   await load();
+  clearTimeout(startTimer);
+  $("loading").hidden = true;
+  $("full").hidden = false;
+  api().page_ready();
   if (!(await api().get_setup()).saved) await openSetup();  // first run
   if ((await api().get_progress()).running) { setMini(true); watchJob(); }
 });

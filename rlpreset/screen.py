@@ -4,6 +4,7 @@ import asyncio
 import ctypes
 import ctypes.wintypes as wintypes
 import difflib
+import math
 import re
 from dataclasses import dataclass
 
@@ -14,6 +15,11 @@ from winrt.windows.storage.streams import DataWriter
 
 # Small text in the game reads much better when enlarged before OCR.
 UPSCALE = 2
+
+
+class OnScreen(tuple):
+    """A point or region already in fractions of the real game picture, so it isn't moved for the
+    player's interface scale like the positions in layout.py are."""
 
 
 @dataclass
@@ -27,7 +33,7 @@ class Word:
 
     @property
     def center(self):
-        return (self.left + self.width / 2, self.top + self.height / 2)
+        return OnScreen((self.left + self.width / 2, self.top + self.height / 2))
 
 
 _engine = None
@@ -59,15 +65,23 @@ async def _recognize(bitmap):
     return await _get_engine().recognize_async(bitmap)
 
 
-def read_lines(img, invert=False, scale=UPSCALE, boost_contrast=False):
-    """Read text lines from a PIL image. Returns Words in the image's own pixel coordinates."""
-    big = img.resize((img.width * scale, img.height * scale), Image.LANCZOS)
+def read_lines(img, invert=False, scale=UPSCALE, boost_contrast=False, pad=0):
+    """Read text lines from a PIL image. Returns Words in the image's own pixel coordinates.
+    pad adds a dark border first: tiny text right at the edge reads better with room around it."""
+    if pad:
+        img = ImageOps.expand(img.convert("RGB"), border=pad, fill=(0, 0, 0))
+    big = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
     if boost_contrast:
         # Coloured paint badges (LIME, CRIMSON, ...) read far better in high-contrast grey.
         big = ImageOps.autocontrast(ImageOps.grayscale(big)).convert("RGB")
     if invert:
         big = ImageOps.invert(big.convert("RGB"))
     result = asyncio.run(_recognize(_to_bitmap(big)))
+    # When the OCR thinks the text is tilted (angled stadium banners on big pictures, seen live) it
+    # straightens the picture first and gives positions in the straightened one. Turn them back.
+    angle = math.radians(result.text_angle or 0)
+    cos, sin = math.cos(angle), math.sin(angle)
+    mid_x, mid_y = big.width / 2, big.height / 2
     lines = []
     for line in result.lines:
         boxes = [w.bounding_rect for w in line.words]
@@ -75,7 +89,10 @@ def read_lines(img, invert=False, scale=UPSCALE, boost_contrast=False):
         top = min(b.y for b in boxes)
         right = max(b.x + b.width for b in boxes)
         bottom = max(b.y + b.height for b in boxes)
-        lines.append(Word(line.text, left / scale, top / scale,
+        dx, dy = (left + right) / 2 - mid_x, (top + bottom) / 2 - mid_y
+        shift_x = mid_x + dx * cos - dy * sin - (left + right) / 2
+        shift_y = mid_y + dy * cos + dx * sin - (top + bottom) / 2
+        lines.append(Word(line.text, (left + shift_x) / scale - pad, (top + shift_y) / scale - pad,
                           (right - left) / scale, (bottom - top) / scale))
     return lines
 

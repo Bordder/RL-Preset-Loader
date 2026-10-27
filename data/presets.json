@@ -1630,8 +1630,8 @@
           "paint": "Titanium White"
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Lightspeed",
@@ -2570,8 +2570,8 @@
           "paint": "Lime"
         },
         "boost": {
-          "name": "Standard Green",
-          "paint": null
+          "name": "Standard",
+          "paint": "Forest Green"
         },
         "trail": {
           "name": "Classic",
@@ -3209,8 +3209,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -3242,8 +3242,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -3280,8 +3280,8 @@
           "paint": "Lime"
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Laser Wave III",
@@ -3313,8 +3313,8 @@
           "paint": "Lime"
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Laser Wave III",
@@ -3623,8 +3623,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Laser Wave III",
@@ -3798,8 +3798,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -3836,8 +3836,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Luminous",
@@ -3869,8 +3869,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Luminous",
@@ -5108,8 +5108,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Green",
-          "paint": null
+          "name": "Standard",
+          "paint": "Forest Green"
         },
         "trail": {
           "name": "Classic",
@@ -5141,8 +5141,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Green",
-          "paint": null
+          "name": "Standard",
+          "paint": "Forest Green"
         },
         "trail": {
           "name": "Classic",
@@ -5676,8 +5676,8 @@
           "paint": "Sky Blue"
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Classic",
@@ -5703,8 +5703,8 @@
           "paint": "Sky Blue"
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Classic",
@@ -5735,8 +5735,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Puple",
-          "paint": null
+          "name": "Standard",
+          "paint": "Purple"
         },
         "trail": {
           "name": "Laser Wave III",
@@ -5768,8 +5768,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Puple",
-          "paint": null
+          "name": "Standard",
+          "paint": "Purple"
         },
         "trail": {
           "name": "Laser Wave III",
@@ -6841,8 +6841,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -6874,8 +6874,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -6983,8 +6983,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -7016,8 +7016,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -8432,8 +8432,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -8462,8 +8462,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -8814,8 +8814,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Pink Standard",
-          "paint": null
+          "name": "Standard",
+          "paint": "Pink"
         },
         "trail": {
           "name": "Classic",
@@ -9349,8 +9349,8 @@
           "paint": "Gold"
         },
         "boost": {
-          "name": "Standard Green",
-          "paint": null
+          "name": "Standard",
+          "paint": "Forest Green"
         },
         "trail": {
           "name": "Classic",
@@ -9491,8 +9491,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Luminous",
@@ -9524,8 +9524,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Friction",
@@ -10733,8 +10733,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Luminous",
@@ -10766,8 +10766,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Friction",
@@ -11159,8 +11159,8 @@
           "paint": "Gold"
         },
         "boost": {
-          "name": "Standard Green",
-          "paint": null
+          "name": "Standard",
+          "paint": "Forest Green"
         },
         "trail": {
           "name": "Classic",
@@ -11652,7 +11652,7 @@
           "paint": null
         },
         "wheels": {
-          "name": "Cristiano: Anodzied",
+          "name": "Cristiano: Anodized",
           "paint": "Burnt Sienna"
         },
         "boost": {
@@ -11679,7 +11679,7 @@
           "paint": null
         },
         "wheels": {
-          "name": "Cristiano: Anodzied",
+          "name": "Cristiano: Anodized",
           "paint": "Burnt Sienna"
         },
         "boost": {
@@ -11786,8 +11786,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -11819,8 +11819,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -12200,8 +12200,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -12233,8 +12233,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -12821,8 +12821,8 @@
           "paint": "Pink"
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Smoketrail",
@@ -12854,8 +12854,8 @@
           "paint": "Pink"
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Smoketrail",
@@ -13933,8 +13933,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Laser Wave III",
@@ -13966,8 +13966,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Laser Wave III",
@@ -14217,8 +14217,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Luminous",
@@ -14250,8 +14250,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Friction",
@@ -14820,8 +14820,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Rally Tracks II",
@@ -14853,8 +14853,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Rally Tracks II",
@@ -17505,8 +17505,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -17925,8 +17925,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -17958,8 +17958,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -18209,8 +18209,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Green",
-          "paint": null
+          "name": "Standard",
+          "paint": "Forest Green"
         },
         "trail": {
           "name": "Classic",
@@ -19552,8 +19552,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Luminous",
@@ -19585,8 +19585,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Luminous",
@@ -19682,8 +19682,8 @@
           "paint": "Titanium White"
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Classic",
@@ -19715,8 +19715,8 @@
           "paint": "Titanium White"
         },
         "boost": {
-          "name": "Standard Green",
-          "paint": null
+          "name": "Standard",
+          "paint": "Forest Green"
         },
         "trail": {
           "name": "Classic",
@@ -22214,8 +22214,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Classic",
@@ -22498,8 +22498,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Friction",
@@ -22531,8 +22531,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Yellow",
-          "paint": null
+          "name": "Standard",
+          "paint": "Saffron"
         },
         "trail": {
           "name": "Friction",
@@ -23906,8 +23906,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Classic",
@@ -24965,8 +24965,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Classic",
@@ -25036,8 +25036,8 @@
           "paint": null
         },
         "boost": {
-          "name": "Standard Blue",
-          "paint": null
+          "name": "Standard",
+          "paint": "Cobalt"
         },
         "trail": {
           "name": "Classic",

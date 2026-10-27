@@ -130,6 +130,19 @@ def click(x, y, button="left", settle=0.04, hold=0.06, after=0.06):
     time.sleep(after)
 
 
+def drag(x0, y0, x1, y1, steps=10):
+    """Hold the left button at (x0, y0) and move to (x1, y1), e.g. to slide a settings slider."""
+    move(x0, y0)
+    sleep(0.1)
+    _send(_mouse(MOUSEEVENTF_LEFTDOWN))
+    time.sleep(0.1)
+    for k in range(1, steps + 1):
+        move(x0 + (x1 - x0) * k // steps, y0 + (y1 - y0) * k // steps)
+        time.sleep(0.03)
+    _send(_mouse(MOUSEEVENTF_LEFTUP))
+    time.sleep(0.06)
+
+
 def scroll(x, y, notches):
     """Positive notches scroll up, negative scroll down."""
     move(x, y)

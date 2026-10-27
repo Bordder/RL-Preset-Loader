@@ -60,6 +60,7 @@ class Api:
         self._saved_geometry = None
         self._job = {"running": False, "id": 0}
         self._garage_read_at = None  # time.monotonic() of the last garage read this session
+        self._page_ready = threading.Event()
 
     # ---------- called from the page ----------
 
@@ -141,6 +142,15 @@ class Api:
 
     def stop(self):
         inputs.request_stop()
+
+    def page_ready(self):
+        """The page calls this once it has drawn the presets (see _watch_start)."""
+        self._page_ready.set()
+        print("page ready", flush=True)
+
+    def log_error(self, message):
+        """Errors from the page go to the debug log (in the .exe, printing writes there)."""
+        print(f"page error: {str(message)[:500]}", flush=True)
 
     def get_progress(self):
         return dict(self._job)
@@ -227,7 +237,15 @@ class Api:
                 raise garage.NavigationError("Couldn't bring Rocket League to the front. Click the game, then try again.")
             inputs.set_target_window(hwnd)
             g = garage.Garage(hwnd, lambda text: None, garage.Options(), store.load("inventory"))
-            result.update(job(g, progress) or {})
+            original_scale = g.make_text_readable(progress)
+            try:
+                result.update(job(g, progress) or {})
+            finally:
+                if original_scale:
+                    self._put_scale_back(g, original_scale, result)
+            advice = g.small_text_advice()
+            if advice:
+                result["warning"] = advice
         except inputs.Aborted as e:
             result["stopped"] = str(e)
         except garage.NavigationError as e:
@@ -240,6 +258,17 @@ class Api:
             self._mini(False)
             self._job.update(running=False, result=result)
 
+    @staticmethod
+    def _put_scale_back(g, original, result):
+        """Return Interface Scale / Display Scale to the player's own settings after a job."""
+        interface, display = original
+        try:
+            g.set_interface_settings(interface, display)
+        except Exception:  # stopped, or the menus didn't go as expected: tell the player instead
+            result["warning"] = (f"Interface Scale was raised to {g.scale[0]:.0%} so the menu text could be read. "
+                                 f"Set it back to {interface:.0%} (and Display Scale to {display:.0%}) in "
+                                 f"Settings > Interface if you like.")
+
     def _scan(self, g, needed, progress):
         inventory = g.scan_inventory(needed, progress)
         inventory["checked_at"] = store.stamp()
@@ -247,7 +276,7 @@ class Api:
         store.save("inventory", inventory)
         owned = sum(len(v) for v in inventory["items"].values())
         return {"message": f"Found {owned} matching items and "
-                           f"{sum(len(v) for v in inventory['finishes'].values())} paint finishes."}
+                           f"{len(set().union(*inventory['finishes'].values()))} paint finishes."}
 
     def _read_garage(self, g, progress):
         names = g.list_presets(lambda text: progress(text))
@@ -338,12 +367,30 @@ class Api:
             game.place_window(hwnd, left, top, right - left, bottom - top, on_top=False)
 
 
+def _watch_start(api):
+    """If the page hasn't drawn the presets after a while, log what we can and load it again.
+    (A user saw an empty window once and it couldn't be reproduced; this fixes it if it happens.)"""
+    window = api._window
+    window.events.loaded += lambda: print("page loaded", flush=True)
+    for attempt in range(2):
+        if api._page_ready.wait(10):
+            return
+        print(f"page not ready after {10 * (attempt + 1)}s, url={getattr(window, 'real_url', None)}; reloading",
+              flush=True)
+        try:
+            window.load_url(window.real_url)
+        except Exception as e:  # keep the app running; the log says what happened
+            print(f"reload failed: {type(e).__name__}: {e}", flush=True)
+    if not api._page_ready.wait(10):
+        print("page still not ready", flush=True)
+
+
 def main():
     api = Api()
     api._window = webview.create_window(WINDOW_TITLE, server, js_api=api,
                                        width=FULL_SIZE[0], height=FULL_SIZE[1], min_size=(MINI_SIZE[0] - 20, MINI_SIZE[1] - 20),
                                        background_color="#0a1020")
-    webview.start(private_mode=True)
+    webview.start(_watch_start, api, private_mode=True)
 
 
 if __name__ == "__main__":

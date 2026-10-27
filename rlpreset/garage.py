@@ -1,5 +1,6 @@
 """Drives the Rocket League garage: find screens, switch tabs, search items, click them."""
 
+import math
 import pathlib
 import time
 from dataclasses import dataclass
@@ -23,6 +24,10 @@ ITEM_SLOTS = ["body", "decal", "wheels", "boost", "goal_explosion", "trail"]
 # Slots the inventory scan checks. Decals aren't scanned: the list only shows decals for the
 # body on the car, and switching body would change the user's preset.
 SCANNED_SLOTS = ["body", "wheels", "boost", "goal_explosion", "trail"]
+
+
+# How the text reader gets some paint badges wrong (seen live).
+PAINT_MISREADS = {"golo": "Gold", "colo": "Gold"}
 
 
 class NavigationError(Exception):
@@ -73,6 +78,8 @@ class Garage:
         # Paint finishes the user owns, per list ("primary" / "accent").
         self.finishes = dict((inventory or {}).get("finishes") or {})
         self._paint_rows = None  # {(team, part): y} on the paint finish tab, read when there
+        # The player's (Interface Scale, Display Scale), measured on the garage screen.
+        self.scale = (layout.MEASURED_INTERFACE_SCALE, layout.MEASURED_DISPLAY_SCALE)
         self.forget_search_state()
 
     # ---------- screen helpers ----------
@@ -89,16 +96,43 @@ class Garage:
     def frame(self):
         return self._frame or self.grab()
 
+    def _anchor(self, x, y):
+        """The screen corner the menu at this layout position is pinned to (seen live)."""
+        if self.where == "garage":
+            return (0.5, 0.5) if x >= 0.30 else (0.0, 1.0)  # dialogs sit in the middle
+        return (0.0, 1.0) if y >= 0.85 else (0.0, 0.0)  # the bottom buttons are pinned to the bottom
+
+    def on_screen(self, point, anchor=None):
+        """A layout point (or region) moved to where it really is for the player's scale."""
+        if isinstance(point, screen.OnScreen):
+            return point
+        if anchor is None:
+            anchor = self._anchor((point[0] + point[-2]) / 2, (point[1] + point[-1]) / 2)
+        out = [layout.scaled(v, anchor[i % 2], *self.scale) for i, v in enumerate(point)]
+        return screen.OnScreen(min(1.0, max(0.0, v)) for v in out)
+
+    def to_layout(self, point, anchor):
+        """A point read off the screen, in layout positions (the opposite of on_screen)."""
+        return tuple(layout.unscaled(v, anchor[i % 2], *self.scale) for i, v in enumerate(point))
+
     def _box(self, region):
         w, h = self.size
+        region = self.on_screen(region)
         return (int(region[0] * w), int(region[1] * h), int(region[2] * w), int(region[3] * h))
 
+    def _ocr_options(self, options):
+        """Enlarge text more before reading when the player's interface is smaller than measured."""
+        shrink = layout.MEASURED_INTERFACE_SCALE * layout.MEASURED_DISPLAY_SCALE / (self.scale[0] * self.scale[1])
+        base = options.get("scale", screen.UPSCALE)
+        return {**options, "scale": max(base, math.ceil(base * shrink - 0.1))}
+
     def read(self, region, **ocr_options):
-        """Text lines inside region (fractions). Positions come back as fractions of the full picture."""
+        """Text lines inside region (fractions). Positions come back as fractions of the full picture
+        (as it really is, not layout positions)."""
         img = self.frame()
         w, h = img.size
         box = self._box(region)
-        words = screen.read_lines(img.crop(box), **ocr_options)
+        words = screen.read_lines(img.crop(box), **self._ocr_options(ocr_options))
         for word in words:
             word.left = (word.left + box[0]) / w
             word.top = (word.top + box[1]) / h
@@ -110,7 +144,7 @@ class Garage:
         """Capture just this region right now and read it (faster than a full-screen grab)."""
         left, top, right, bottom = self._box(region)
         img = screen.capture((self.rect[0] + left, self.rect[1] + top, self.rect[0] + right, self.rect[1] + bottom))
-        return screen.read_lines(img, **ocr_options)
+        return screen.read_lines(img, **self._ocr_options(ocr_options))
 
     def snapshot(self, region):
         """Small grey copy of part of the screen, for spotting when it changes or settles."""
@@ -121,7 +155,8 @@ class Garage:
     def pixel(self, point):
         """Colour of the game picture at point (fractions), from the current frame."""
         img = self.frame()
-        return img.getpixel((int(point[0] * img.width), int(point[1] * img.height)))[:3]
+        x, y = self.on_screen(point)
+        return img.getpixel((min(img.width - 1, int(x * img.width)), min(img.height - 1, int(y * img.height))))[:3]
 
     @staticmethod
     def _differs(a, b, threshold=2.0):
@@ -144,15 +179,17 @@ class Garage:
         self._frame = None
 
     def to_screen(self, point):
-        return (self.rect[0] + int(point[0] * self.size[0]), self.rect[1] + int(point[1] * self.size[1]))
+        x, y = self.on_screen(point)
+        return (self.rect[0] + int(x * self.size[0]), self.rect[1] + int(y * self.size[1]))
 
     def wait(self, seconds):
         inputs.sleep(seconds * self.opt.speed)
 
     def click(self, point, button="left", wait=0.0, allow_delete=False):
         if self.where == "garage" and not allow_delete:
-            x0, y0, x1, y1 = layout.DELETE_BIN_ZONE
-            if x0 <= point[0] <= x1 and y0 <= point[1] <= y1:
+            x0, y0, x1, y1 = self.on_screen(layout.DELETE_BIN_ZONE)
+            x, y = self.on_screen(point)
+            if x0 <= x <= x1 and y0 <= y <= y1:
                 raise NavigationError("Refused to click near the preset DELETE button.")
         inputs.click(*self.to_screen(point), button=button)
         self.park_mouse()
@@ -173,19 +210,166 @@ class Garage:
     # ---------- where are we ----------
 
     def which_screen(self):
-        words = self.read(layout.MENU_REGION)
+        words = self.read(screen.OnScreen(layout.MENU_REGION))
         def has(names):
             return sum(1 for n in names if screen.find_text(words, n))
         if has(CUSTOMIZE_WORDS) >= 1 and not has(GARAGE_WORDS):
             where = "customize"
         elif has(GARAGE_WORDS) >= 1:
             where = "garage"
+            self.measure_scale(words)
         elif has(MAIN_MENU_WORDS) >= 2:
             where = "main_menu"
         else:
             where = "unknown"
         self.where = where
         return where, words
+
+    def measure_scale(self, words):
+        """Work out the player's Interface Scale and Display Scale from where the garage menu labels
+        are (they're pinned to the bottom-left corner). Keeps the last result if too few are readable."""
+        found = []
+        for text, base_y in layout.SCALE_LABELS_Y.items():
+            hit = screen.find_text(words, text, min_score=0.85)
+            if hit:
+                found.append((base_y, hit.center[1], hit.left))
+        if len(found) < 2 or found[-1][0] - found[0][0] < 0.08:
+            return
+        # Label spacing grows with interface x display.
+        n = len(found)
+        mean_b = sum(f[0] for f in found) / n
+        mean_y = sum(f[1] for f in found) / n
+        slope = (sum((f[0] - mean_b) * (f[1] - mean_y) for f in found)
+                 / sum((f[0] - mean_b) ** 2 for f in found))
+        both = slope * layout.MEASURED_DISPLAY_SCALE
+        # The left edge and the height of the labels, given that, each tell the display scale.
+        edge = (1 - layout.MEASURED_DISPLAY_SCALE) / 2
+        left = sum(f[2] for f in found) / n
+        from_x = 1 - 2 * (left - slope * (layout.SCALE_LABELS_LEFT - edge))
+        from_y = 2 * (mean_y + slope * (1 - edge - mean_b)) - 1
+        display = min(1.0, max(0.8, round((from_x + from_y) / 2, 2)))
+        interface = min(1.0, max(0.4, round(both / display, 2)))
+        if (interface, display) != self.scale:
+            self.scale = (interface, display)
+            self.log(f"Interface scale {interface:.0%}, display scale {display:.0%}.")
+
+    def small_text_advice(self):
+        """A tip for the player if the menu text is too small to read reliably, else None."""
+        interface, display = self.scale
+        measured = layout.MEASURED_INTERFACE_SCALE * layout.MEASURED_DISPLAY_SCALE * layout.MEASURED_HEIGHT
+        if interface * display * self.size[1] / measured >= layout.MIN_TEXT_SIZE:
+            return None
+        need = math.ceil(layout.MIN_TEXT_SIZE * measured / (display * self.size[1]) * 20) * 5
+        if need > 100:
+            return ("Rocket League's menu text is very small at this resolution, so some items may be "
+                    "misread. A higher resolution, or Interface Scale 100% and Display Scale 100%, reads best.")
+        return (f"Rocket League's menu text is small at your Interface Scale ({interface:.0%}), so some items "
+                f"may be misread. For best results set Settings > Interface > Interface Scale to {need}%{'' if need == 100 else ' or more'}.")
+
+    # ---------- interface scale setting ----------
+
+    def make_text_readable(self, progress=None):
+        """If the menu text is too small to read reliably, raise Interface Scale (and Display Scale
+        if that's not enough) to 100%. Returns the settings to put back afterwards, or None."""
+        self.go_to_garage()
+        if not self.small_text_advice():
+            return None
+        original = self.scale
+        if progress:
+            progress("Making Rocket League's menu text bigger for now")
+        need_display = self._needs_full_display()
+        self.set_interface_settings(1.0, 1.0 if need_display else original[1])
+        return original
+
+    def _needs_full_display(self):
+        measured = layout.MEASURED_INTERFACE_SCALE * layout.MEASURED_DISPLAY_SCALE * layout.MEASURED_HEIGHT
+        return self.scale[1] * self.size[1] / measured < layout.MIN_TEXT_SIZE
+
+    def set_interface_settings(self, interface, display):
+        """Set Settings > Interface > Interface Scale and Display Scale (fractions, e.g. 0.75), then
+        come back to the garage and check them there. A slider can land 1% off, so it tries twice."""
+        aim = (interface, display)
+        for attempt in range(2):
+            self._set_interface_settings_once(*aim)
+            off = (interface - self.scale[0], display - self.scale[1])
+            if max(abs(o) for o in off) < 0.005:
+                return
+            aim = (aim[0] + off[0], aim[1] + off[1])
+        raise NavigationError(f"Tried to set Interface Scale {interface:.0%} and Display Scale {display:.0%}, "
+                              f"but they're {self.scale[0]:.0%} and {self.scale[1]:.0%}.")
+
+    def _set_interface_settings_once(self, interface, display):
+        self.go_to_garage()
+        inputs.press("esc")  # garage -> main menu (same as BACK)
+        where, words = self.wait_for_screen("main_menu")
+        self.wait(1.5)  # the menu slides in
+        self.grab()
+        where, words = self.which_screen()
+        settings = screen.find_text(words, "SETTINGS", min_score=0.9) if where == "main_menu" else None
+        if not settings:
+            raise NavigationError("Couldn't find SETTINGS on the main menu.")
+        self.click(settings.center, wait=1.2)
+        try:
+            self._open_interface_tab()
+            for label, value, low, high in (("INTERFACE SCALE", interface, 50, 100),
+                                            ("DISPLAY SCALE", display, 90, 100)):
+                self._set_slider(label, round(value * 100), low, high)
+        finally:
+            inputs.press("esc")  # close settings (they apply straight away)
+            self.wait(1.5)
+        self.go_to_garage()
+
+    def _settings_words(self):
+        self._frame = None
+        return self.read(screen.OnScreen((0.2, 0.15, 0.8, 0.85)))
+
+    def _open_interface_tab(self):
+        words = self._settings_words()
+        if screen.find_text(words, "INTERFACE SCALE", min_score=0.9):
+            return
+        # The tab names can be read as one line: click INTERFACE's share of it.
+        line = next((w for w in words if "INTERFACE" in w.text.upper() and "SCALE" not in w.text.upper()), None)
+        if not line:
+            raise NavigationError("Couldn't find the INTERFACE tab in Settings.")
+        share = (line.text.upper().index("INTERFACE") + 4.5) / len(line.text)
+        self.click(screen.OnScreen((line.left + line.width * share, line.center[1])), wait=1.0)
+        if not screen.find_text(self._settings_words(), "INTERFACE SCALE", min_score=0.9):
+            raise NavigationError("Couldn't open the INTERFACE tab in Settings.")
+
+    def _set_slider(self, label, percent, low, high):
+        """Move one settings slider. Its track is found from its bright outline right of the label."""
+        word = screen.find_text(self._settings_words(), label, min_score=0.9)
+        if not word:
+            raise NavigationError(f"Couldn't find {label} in Settings.")
+        w, h = self.size
+        text_px = word.height * h
+        x0 = int((word.left + word.width) * w + text_px * 0.3)
+        y = int(word.center[1] * h)
+        img = self.frame().crop((x0, int(y - text_px * 0.6), int(x0 + text_px * 20),
+                                 int(y + text_px * 0.6))).convert("L")
+        bright = [x for x in range(img.width) if max(img.getpixel((x, k)) for k in range(img.height)) > 60]
+        if not bright:
+            raise NavigationError(f"Couldn't find the {label} slider.")
+        run = [bright[0]]
+        for x in bright[1:]:
+            if x - run[-1] > 3:
+                break
+            run.append(x)
+        start, end, y_px = self.rect[0] + x0 + run[0], self.rect[0] + x0 + run[-1], self.rect[1] + y
+        if percent >= high or percent <= low:
+            # All the way: a click moves the knob there, then drag it past the end (seen live: a
+            # click alone can stop 1% short).
+            edge = end - 1 if percent >= high else start + 1
+            inputs.click(edge, y_px)
+            self.wait(0.3)
+            inputs.drag(edge, y_px, edge + (60 if percent >= high else -60), y_px)
+        else:
+            # Aim at the middle of the step, so it can't round down to the one below.
+            knob = text_px * 0.25
+            step = (end - start - 2 * knob) / (high - low)
+            inputs.click(int(start + knob + (percent - low + 0.4) * step), y_px)
+        self.park_mouse()
+        self.wait(0.8)
 
     def wait_for_screen(self, wanted, timeout=4.0):
         end = time.monotonic() + timeout * self.opt.speed
@@ -203,11 +387,20 @@ class Garage:
             if where == "garage":
                 return words
             if where == "main_menu":
-                self.click(screen.find_text(words, "GARAGE").center)
+                self.wait(1.0)  # the menu slides in; read it again once it's still
+                self.grab()
+                where, words = self.which_screen()
+                if where != "main_menu":
+                    continue
+                button = screen.find_text(words, "GARAGE")
+                if not button:
+                    break
+                self.click(button.center)
             elif where == "customize":
                 inputs.press("esc")  # same as BACK, tested live
             else:
-                break
+                self.wait(1.0)  # maybe between screens (e.g. Settings closing): look again
+                continue
             where, words = self.wait_for_screen("garage")
             if where == "garage":
                 return words
@@ -221,7 +414,10 @@ class Garage:
     def preset_title(self):
         self._frame = None
         self.grab()
-        return " ".join(w.text for w in self.read(layout.PRESET_TITLE_REGION))
+        # Tested: 2x reads titles best at the measured size, 4x once the interface is smaller.
+        small = self.scale[0] * self.scale[1] < layout.MEASURED_INTERFACE_SCALE * layout.MEASURED_DISPLAY_SCALE * 0.95
+        crop = self.frame().crop(self._box(layout.PRESET_TITLE_REGION))
+        return " ".join(w.text for w in screen.read_lines(crop, scale=4 if small else 2))
 
     def create_preset(self, name):
         """Always work in a brand-new preset, so the user's own presets are never touched."""
@@ -520,17 +716,26 @@ class Garage:
         paint_names = {screen.normalize(p): p for p in layout.PAINTS}
 
         def is_paint(text):
+            if screen.normalize(text) in PAINT_MISREADS:
+                return PAINT_MISREADS[screen.normalize(text)]
             hit = max(paint_names, key=lambda p: screen.similarity(text, p))
             return paint_names[hit] if screen.similarity(text, hit) >= 0.8 else None
+
+        def badge(region):
+            # Contrast-boosted first; if that finds nothing, plain (each misses different badges).
+            pad = max(3, int(self._box(region)[3] - self._box(region)[1]) // 2)
+            for contrast in (True, False):
+                for line in self.read(region, scale=4, boost_contrast=contrast, pad=pad):
+                    if is_paint(line.text):
+                        return is_paint(line.text)
+            return None
 
         tiles = []
         for y in layout.GRID_ROWS_NAME_Y:
             for x in layout.GRID_COLUMNS_X:
                 badge_region = (x - layout.TILE_HALF_WIDTH, y - layout.BADGE_ABOVE_NAME,
                                 x + layout.TILE_HALF_WIDTH, y - layout.BADGE_BELOW_NAME)
-                paint = None
-                for line in self.read(badge_region, scale=4, boost_contrast=True):
-                    paint = paint or is_paint(line.text)
+                paint = badge(badge_region)
 
                 name_region = (x - layout.TILE_HALF_WIDTH, y - layout.TILE_TEXT_ABOVE_NAME,
                                x + layout.TILE_HALF_WIDTH, y + layout.TILE_TEXT_BELOW_NAME)
@@ -653,8 +858,10 @@ class Garage:
         ACCENT rows, and the orange rows move up (seen live)."""
         self.grab()
         words = self.read(layout.PAINT_ROWS_REGION)
-        primary = sorted(w.center[1] for w in words if screen.similarity(w.text, "PRIMARY") >= 0.8)
-        accent = sorted(w.center[1] for w in words if screen.similarity(w.text, "ACCENT") >= 0.8)
+        def rows_of(label):
+            return sorted(self.to_layout(w.center, (0.0, 0.0))[1] for w in words
+                          if screen.similarity(w.text, label) >= 0.8)
+        primary, accent = rows_of("PRIMARY"), rows_of("ACCENT")
         rows = dict(zip([("blue", "primary"), ("orange", "primary")], primary))
         for y in accent:
             # An accent row belongs to the primary row just above it.
@@ -803,7 +1010,9 @@ class Garage:
                 self.wait(extra)
             # Picking a square closes the grid. The swatch colour check is a second sign, but the
             # finish can shade very dark colours on the swatch (seen live), so a closed grid is enough.
-            if swatch_matches() or not grid_open():
+            # The grid only counts as open if the picked square still shows: a button highlight
+            # moving inside the grid's area also changes it (seen live).
+            if swatch_matches() or not (grid_open() and close_to(self.pixel(target), expected)):
                 self.equipped[team][key] = want
                 return "set", label
         self.save_debug(f"colour_{team}_{part}")
