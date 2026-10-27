@@ -18,9 +18,11 @@ Still being worked on. I will continue updating the presets database when I can.
 - Scans your inventory and marks each preset as Full, Partial or Can't make
 - Checks your garage first so the same preset isn't added twice
 - Copies the pro's body colours as well as their items
-- If you don't own an item in the right paint, it uses the free default instead (OEM, Standard
-  boost, Classic trail, Classic goal explosion, no decal). Missing paint finishes become Glossy
-- Skips presets whose car body you don't own
+- If you don't own the wheels, boost, trail or goal explosion in the right paint, it uses the free
+  default instead (OEM, Standard boost, Classic trail, Classic goal explosion). Missing paint
+  finishes become Glossy
+- Skips presets whose car body or decal you don't own. If you own the decal in a different
+  paint, it uses that instead, plainest first (unpainted, black, white, grey)
 - Shows what got swapped after each run
 - Clear all presets button, with a warning first
 - Works on Steam and Epic, any 16:9 resolution
@@ -48,7 +50,7 @@ presets is the Clear all presets button, and only after you type DELETE to confi
 2. Start Rocket League and go to the main menu
 3. Run the exe and follow the setup: it detects your platform, resolution and game settings,
    you just confirm them
-4. Let it scan your inventory (about 3 minutes)
+4. Let it scan your inventory (about 9 minutes)
 5. Pick your presets and press **Add to garage**
 
 Nothing to install. Windows 10 or 11. You can change your answers any time with the **Setup** button.

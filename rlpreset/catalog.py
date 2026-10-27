@@ -36,6 +36,33 @@ def needed_items(presets):
     return {slot: sorted(names) for slot, names in needed.items() if names}
 
 
+def needed_decals(presets):
+    """Decals to check per body ({body name: [decal names]}): the decal list only shows decals
+    that fit the body on the car."""
+    needed = {}
+    for p in presets:
+        for team in ("blue", "orange"):
+            body, decal = p[team].get("body"), p[team].get("decal")
+            if body and decal and screen.normalize(decal["name"]) != "none":
+                needed.setdefault(body["name"], set()).add(decal["name"])
+    return {body: sorted(names) for body, names in sorted(needed.items())}
+
+
+def decal_owned(inventory, body, decal):
+    """True / "other paint" / False from the inventory scan's decal check, or None if that body
+    wasn't checked."""
+    if not decal or screen.normalize(decal["name"]) == "none":
+        return True
+    decals = (inventory or {}).get("decals") or {}
+    key = screen.normalize(body["name"]) if body else None
+    if key not in decals:
+        return None
+    if garage.owns(decals[key], decal["name"], decal["paint"]):
+        return True
+    # Owned in another paint: it gets used instead, so the preset can still be made.
+    return "other paint" if any(garage.same_item(n, decal["name"]) for n, _ in decals[key]) else False
+
+
 def _is_free_default(slot, item):
     default = layout.DEFAULT_ITEMS.get(slot)
     return default and item["paint"] is None and screen.normalize(item["name"]) == screen.normalize(default)
@@ -51,10 +78,16 @@ def ownership(preset, inventory):
     # Decals can't be scanned, but ones found missing while adding presets are remembered.
     missing_decals = {(n, p) for n, p in inventory.get("missing_decals", [])}
     checks = {}
+    swappable = set()  # missing, but used in another paint
     for team in ("blue", "orange"):
         decal = preset[team].get("decal")
-        if decal and (screen.normalize(decal["name"]), decal["paint"]) in missing_decals:
-            checks[("decal", decal["name"], decal["paint"])] = False
+        owned_decal = decal_owned(inventory, preset[team].get("body"), decal)
+        if owned_decal is None and decal and (screen.normalize(decal["name"]), decal["paint"]) in missing_decals:
+            owned_decal = False
+        if owned_decal is not None and decal and screen.normalize(decal["name"]) != "none":
+            checks[("decal", decal["name"], decal["paint"])] = owned_decal is True
+            if owned_decal == "other paint":
+                swappable.add(("decal", decal["name"], decal["paint"]))
         for slot in garage.SCANNED_SLOTS:
             item = preset[team].get(slot)
             if not item or slot not in items:
@@ -68,8 +101,10 @@ def ownership(preset, inventory):
                 checks[(f"{part} finish", finish, None)] = ok
     missing = [garage.item_label(name, paint) for (slot, name, paint), ok in checks.items() if not ok]
     owned = sum(checks.values())
-    body_missing = any(not ok for (slot, _, _), ok in checks.items() if slot == "body")
-    status = "cant" if body_missing else "full" if owned == len(checks) else "partial"
+    # Without its body or its decal a preset isn't really that preset, so it isn't made.
+    essential_missing = any(not ok for key, ok in checks.items()
+                            if key[0] in ("body", "decal") and key not in swappable)
+    status = "cant" if essential_missing else "full" if owned == len(checks) else "partial"
     return {"status": status, "owned": owned, "total": len(checks), "missing": missing}
 
 

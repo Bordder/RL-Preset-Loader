@@ -91,7 +91,12 @@ def check_abort():
         raise Aborted("F8 pressed")
     pt = wintypes.POINT()
     user32.GetCursorPos(ctypes.byref(pt))
-    if pt.x <= 2 and pt.y <= 2:
+    # The corner of the game's screen. Not just "x and y small": on a monitor left of or above the
+    # main one, coordinates are negative and the whole top edge would count (seen live).
+    corner = wintypes.RECT()
+    if not (_target_window and user32.GetWindowRect(_target_window, ctypes.byref(corner))):
+        corner.left = corner.top = 0
+    if 0 <= pt.x - corner.left <= 2 and 0 <= pt.y - corner.top <= 2:
         raise Aborted("mouse moved to the top-left corner")
 
 

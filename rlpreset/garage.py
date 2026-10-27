@@ -30,6 +30,24 @@ SCANNED_SLOTS = ["body", "wheels", "boost", "goal_explosion", "trail"]
 PAINT_MISREADS = {"golo": "Gold", "colo": "Gold"}
 
 
+# Single words from the paint names: a badge sometimes gets read as part of the name ("ISKY Affluenter").
+PAINT_WORDS = sorted({w for p in layout.PAINTS for w in screen.normalize(p).split()})
+
+
+def strip_badge_words(name):
+    """The name without paint-badge words read onto its front. Keeps at least one word."""
+    words = name.split()
+    while len(words) > 1 and max(screen.similarity(words[0], w) for w in PAINT_WORDS) >= 0.75:
+        words.pop(0)
+    return " ".join(words)
+
+
+def same_item(seen, wanted):
+    """True if a name read off a tile is this item: as read, or without stray badge words
+    (so "ISKY Affluenter" is Affluenter, while a real "Black Market" still matches itself)."""
+    return max(screen.name_score(seen, wanted), screen.name_score(strip_badge_words(seen), wanted)) >= 0.82
+
+
 class NavigationError(Exception):
     pass
 
@@ -52,13 +70,30 @@ class Options:
     speed: float = 1.0                # bigger = slower, safer
 
 
+def seen_at_all(owned_items, name, paint):
+    """True if the scanned list has this item in this paint, or in any paint when one is wanted."""
+    if owns(owned_items, name, paint):
+        return True
+    return paint is not None and any(same_item(n, name) for n, _ in owned_items)
+
+
+def same_preset_name(seen, name):
+    """True if a preset title read off the screen is this exact name. Allows one misread character
+    (the game's 0 often reads as a symbol) but nothing else: same length, same last word, so
+    "LJ MG-88 2" never matches the user's own "LJ MG-88"."""
+    a, b = " ".join(seen.lower().split()), " ".join(name.lower().split())
+    if not a or not b or a.split()[-1] != b.split()[-1] and len(b.split()) > 1:
+        return False
+    return len(a) == len(b) and sum(x != y for x, y in zip(a, b)) <= 1
+
+
 def item_label(name, paint=None):
     return f"{paint} {name}" if paint else name
 
 
 def owns(owned_items, name, paint):
     """True if the scanned list of (name, paint) pairs has this exact item and paint."""
-    return any(p == paint and screen.name_score(n, name) >= 0.82 for n, p in owned_items)
+    return any(p == paint and same_item(n, name) for n, p in owned_items)
 
 
 class Garage:
@@ -77,6 +112,8 @@ class Garage:
         self.owned = {slot: [tuple(i) for i in items] for slot, items in ((inventory or {}).get("items") or {}).items()}
         # Paint finishes the user owns, per list ("primary" / "accent").
         self.finishes = dict((inventory or {}).get("finishes") or {})
+        # Decals owned per body (normalized body name -> [(name, paint)]), from the inventory scan.
+        self.decals = {body: [tuple(i) for i in items] for body, items in ((inventory or {}).get("decals") or {}).items()}
         self._paint_rows = None  # {(team, part): y} on the paint finish tab, read when there
         # The player's (Interface Scale, Display Scale), measured on the garage screen.
         self.scale = (layout.MEASURED_INTERFACE_SCALE, layout.MEASURED_DISPLAY_SCALE)
@@ -510,10 +547,15 @@ class Garage:
         self.go_to_garage()
         first = self.preset_title()
         names = [first]
+        missed = 0
         for _ in range(300):
             before = self.snapshot(layout.PRESET_TITLE_REGION)
             self.click(layout.PRESET_NEXT_ARROW)
             self.wait_settled(layout.PRESET_TITLE_REGION, before=before, min_wait=0.08, timeout=1.5)
+            if not self._differs(before, self.snapshot(layout.PRESET_TITLE_REGION)) and missed < 3:
+                missed += 1  # the click didn't register (the title never moved): not back at the start
+                continue
+            missed = 0
             title = self.preset_title()
             if screen.similarity(title, first) >= 0.95:
                 break
@@ -695,22 +737,31 @@ class Garage:
                 inputs.clear_text(erase)
             inputs.type_text(text)
         self._search_text = text
-        self.wait_settled(layout.GRID_REGION, before=before, min_wait=0.15)
+        # The grid can look the same after the search (two searches that both find nothing), so
+        # don't wait long for a change; the results check below catches a grid that hasn't updated.
+        self.wait_settled(layout.GRID_REGION, before=before, min_wait=0.15, timeout=0.8)
         if text and not self._results_match(text):
             self.wait_settled(layout.GRID_REGION, min_wait=0.3, timeout=1.5)
 
     def _results_match(self, text):
         """Quick check that the grid shows search results: the first tile's name shares a word with
         the search (or the grid is empty, meaning nothing matched)."""
-        x, y = layout.GRID_COLUMNS_X[0], layout.GRID_ROWS_NAME_Y[0]
-        region = (x - layout.TILE_HALF_WIDTH, y - layout.TILE_TEXT_ABOVE_NAME,
-                  x + layout.TILE_HALF_WIDTH, y + layout.TILE_TEXT_BELOW_NAME)
-        first = screen.normalize(" ".join(w.text for w in self.read_now(region)))
-        if not first:
-            return True
-        return any(word in first for word in screen.normalize(text).split() if len(word) > 2)
+        y = layout.GRID_ROWS_NAME_Y[0]
+        after_none = False
+        for x in layout.GRID_COLUMNS_X[:2]:
+            region = (x - layout.TILE_HALF_WIDTH, y - layout.TILE_TEXT_ABOVE_NAME,
+                      x + layout.TILE_HALF_WIDTH, y + layout.TILE_TEXT_BELOW_NAME)
+            first = screen.normalize(" ".join(w.text for w in self.read_now(region)))
+            if first == "none" and not after_none:
+                after_none = True  # the decal list always starts with "None", search results too (seen live)
+                continue
+            if not first:
+                # Nothing matched, or (after "None") the results haven't loaded yet: worth a short wait.
+                return not after_none
+            return any(word in first for word in screen.normalize(text).split() if len(word) > 2)
+        return True
 
-    def read_tiles(self):
+    def read_tiles(self, expect=None):
         """Read each visible tile: its name, and its paint badge (read separately with a contrast
         boost, which reads coloured badges like LIME or CRIMSON far better). ~0.2s for 16 tiles."""
         paint_names = {screen.normalize(p): p for p in layout.PAINTS}
@@ -739,22 +790,33 @@ class Garage:
 
                 name_region = (x - layout.TILE_HALF_WIDTH, y - layout.TILE_TEXT_ABOVE_NAME,
                                x + layout.TILE_HALF_WIDTH, y + layout.TILE_TEXT_BELOW_NAME)
-                name = " ".join(w.text for w in self.read(name_region) if not is_paint(w.text)).strip()
+                # Dark names on bright tiles (e.g. red on a purple decal) can need a contrast boost, or
+                # get misread ("20XX" as "poxx", seen live). If it doesn't match what was searched
+                # for, read it the other ways too.
+                name = ""
+                for options in ({}, {"boost_contrast": True}, {"pad": 8}):
+                    seen = " ".join(w.text for w in self.read(name_region, **options) if not is_paint(w.text)).strip()
+                    if seen and (not name or (expect and same_item(seen, expect))):
+                        name = seen
+                    if name and (not expect or same_item(name, expect)):
+                        break
                 if name:
                     tiles.append(Tile(name, paint, (x, y)))
         return tiles
 
-    def result_pages(self, max_pages=6):
+    def result_pages(self, max_pages=6, expect=None):
         """Yields (page number, tiles) for each page of search results, scrolling down between pages."""
         last = None
+        self.result_pages_scrolled = False
         for page in range(max_pages):
             self.grab()
-            tiles = self.read_tiles()
+            tiles = self.read_tiles(expect)
             yield page, tiles
             seen = [(t.name, t.paint) for t in tiles]
             if len(tiles) < 16 or seen == last:
                 return  # last page of results
             last = seen
+            self.result_pages_scrolled = True
             inputs.scroll(*self.to_screen(layout.GRID_SCROLL_POINT), -4)
             self.park_mouse()
             self.wait_settled(layout.GRID_REGION, min_wait=0.2)
@@ -764,7 +826,7 @@ class Garage:
         """The tile with this name in exactly this paint (None = unpainted). A different paint
         counts as not owned: it can look nothing like the pro's car."""
         for t in tiles:
-            if t.paint == paint and screen.name_score(t.name, name) >= 0.82:
+            if t.paint == paint and same_item(t.name, name):
                 return t
         return None
 
@@ -797,6 +859,28 @@ class Garage:
         self.wait(0.15)
         return True
 
+    def find_other_paint(self, name, paint, team_only=None):
+        """Click this item in the plainest other paint the user owns (see DECAL_PAINT_PREFERENCE)."""
+        rank = {p: i for i, p in enumerate(layout.DECAL_PAINT_PREFERENCE)}
+        self.search(name)
+        found = [t for _, tiles in self.result_pages(expect=name) for t in tiles
+                 if t.paint != paint and same_item(t.name, name)]
+        if not found:
+            return None
+        best = min(found, key=lambda t: rank.get(t.paint, len(rank)))
+        if self.result_pages_scrolled:
+            # The tile is on an earlier page: search again so it's on screen to click.
+            self.search("")
+            self.search(name)
+            for _, tiles in self.result_pages(expect=name):
+                hit = self.pick_tile(tiles, name, best.paint)
+                if hit:
+                    best = hit
+                    break
+            else:
+                return None
+        return best if self.click_tile(best, team_only) else None
+
     def find_and_click(self, name, paint, team_only=None):
         """Search for the item and click it. Returns the tile, or None if it isn't owned."""
         if screen.normalize(name) == "none":
@@ -814,19 +898,44 @@ class Garage:
             tile = self.pick_tile(self.read_tiles()[:4], "None", None)
             return tile if tile and self.click_tile(tile, team_only) else None
         self.search(name)
-        for _, tiles in self.result_pages():
+        for _, tiles in self.result_pages(expect=name):
             tile = self.pick_tile(tiles, name, paint)
             if tile:
                 return tile if self.click_tile(tile, team_only) else None
         return None
 
+    def decal_known_missing(self, body, decal):
+        """True if the inventory scan checked this body's decals and this one isn't owned."""
+        if not decal or screen.normalize(decal["name"]) == "none" or not body:
+            return False
+        owned = self.decals.get(screen.normalize(body["name"]))
+        # Owned in any paint is enough: another paint gets used.
+        return owned is not None and not any(same_item(n, decal["name"]) for n, _ in owned)
+
+    def delete_own_preset(self, name):
+        """Delete the preset this app just created, after checking the selected preset really is it."""
+        self.go_to_garage()
+        # Read a few times: the text reader sometimes gets a letter wrong.
+        for _ in range(3):
+            title = self.preset_title()
+            if same_preset_name(title, name):
+                break
+            self.wait(0.3)
+        else:
+            self.log(f"Didn't delete: the selected preset is '{title}', not '{name}'")
+            return False
+        return bool(self.delete_current_preset())
+
     def known_missing(self, slot, name, paint):
-        """True if the inventory scan says the item isn't owned (so there's no need to search)."""
-        return slot in self.owned and not owns(self.owned[slot], name, paint)
+        """True if the inventory scan didn't see the item at all (so there's no need to search).
+        If it saw the item in other paints, this paint is still looked for: paint badges are
+        sometimes misread, and a missed one would swap an item the user owns."""
+        return slot in self.owned and not seen_at_all(self.owned[slot], name, paint)
 
     def equip(self, team, slot, item, team_only=False):
         """Make sure `item` is equipped in `slot`. If it isn't owned, the free default goes on instead.
-        Returns (outcome, label of what's on the car): outcome is set / already / default / skipped."""
+        Returns (outcome, label of what's on the car): outcome is set / already / paint (a decal in
+        another paint) / default / skipped."""
         name, paint = item["name"], item["paint"]
         want = (screen.normalize(name), paint)
         only = team if team_only else None
@@ -838,6 +947,13 @@ class Garage:
                 self._record(team, slot, name, paint, team_only)
                 return "set", item_label(name, paint)
             self.missing.add((slot, want))
+
+        if slot == "decal":
+            # The decal is the point of the preset: the same decal in another owned paint beats none.
+            tile = self.find_other_paint(name, paint, only)
+            if tile:
+                self._record(team, slot, name, tile.paint, team_only)
+                return "paint", item_label(name, tile.paint)
 
         default = layout.DEFAULT_ITEMS.get(slot)
         # A painted default (e.g. Black Classic trail) that isn't owned still falls back to the plain one.
@@ -1040,6 +1156,9 @@ class Garage:
             body = preset[team].get("body")
             if body and self.known_missing("body", body["name"], body["paint"]):
                 raise PresetSkipped(f"you don't own the {item_label(body['name'], body['paint'])} body")
+            decal = preset[team].get("decal")
+            if self.decal_known_missing(body, decal):
+                raise PresetSkipped(f"you don't own the {item_label(decal['name'], decal['paint'])} decal")
 
         start = time.monotonic()
         results = []
@@ -1061,11 +1180,11 @@ class Garage:
                 team = "both" if item == orange.get(slot) else "blue"
                 outcome, got = self.equip("blue", slot, item)
                 note(team, slot, item_label(item["name"], item["paint"]), outcome, got)
-                if slot == "body" and outcome not in ("set", "already"):
-                    # Only happens without an inventory scan; the preset was already created.
-                    self.go_to_garage()
-                    raise PresetSkipped(f"you don't own the {item_label(item['name'], item['paint'])} body "
-                                        f"(left as '{final_name}')")
+                if slot in ("body", "decal") and outcome not in ("set", "already", "paint"):
+                    # The preset isn't worth having without these (other slots get the free default).
+                    # Only happens when the inventory scan didn't cover it, so the preset was already
+                    # created: remove it again.
+                    self._give_up(final_name, f"you don't own the {item_label(item['name'], item['paint'])} {slot}")
             if slot == "decal" and paint_jobs:
                 self.go_to_tab("paint_finish")
                 self.paint_rows()
@@ -1090,6 +1209,9 @@ class Garage:
                     self.go_to_tab(slot)
                     outcome, got = self.equip("orange", slot, item, team_only=True)
                     note("orange", slot, item_label(item["name"], item["paint"]), outcome, got)
+                    if slot in ("body", "decal") and outcome not in ("set", "already", "paint"):
+                        self._give_up(final_name, f"you don't own the orange car's "
+                                                  f"{item_label(item['name'], item['paint'])} {slot}")
                 elif not self.opt.left_click_sets_both_teams:
                     self.go_to_tab(slot)
                     outcome, got = self.equip("orange", slot, item)
@@ -1097,13 +1219,66 @@ class Garage:
             self.view_team("blue")
 
         self.go_to_garage()
-        swapped = sum(1 for r in results if r["outcome"] in ("default", "skipped"))
+        swapped = sum(1 for r in results if r["outcome"] in ("paint", "default", "skipped"))
         self.log(f"Finished {preset['player']} in {time.monotonic() - start:.0f}s, {swapped} swapped")
         return {"name": final_name, "results": results}
 
+    def _give_up(self, final_name, reason):
+        """Stop making this preset and delete the half-made one."""
+        deleted = self.delete_own_preset(final_name)
+        raise PresetSkipped(reason if deleted else f"{reason} (left as '{final_name}')")
+
     # ---------- inventory scan ----------
 
-    def scan_inventory(self, needed, progress=None):
+    SCAN_PRESET_NAME = "TEMP DECAL CHECK"  # plain words: read reliably
+
+    def scan_decals(self, needed, progress=None, share=(0.0, 1.0)):
+        """Check which decals the user owns for each body. The decal list only shows decals for the
+        body on the car, so this works in a temporary preset of its own (switching bodies on the
+        user's selected preset would change it), and deletes it afterwards.
+        needed = {body name: [decal names]}; only bodies the user owns are checked.
+        Returns {normalized body name: [[decal, paint], ...]}."""
+        bodies = [b for b in needed if any(same_item(n, b) for n, _ in self.owned.get("body", []))]
+        if not bodies:
+            return {}
+        total = sum(len(needed[b]) for b in bodies)
+        done = 0
+        name = self.create_preset(self.SCAN_PRESET_NAME)
+        decals = {}
+        try:
+            self.open_customize()
+            for body in bodies:
+                if not self._equip_body_any_paint(body):
+                    done += len(needed[body])
+                    continue
+                self.go_to_tab("decal")
+                found = set()
+                for decal in needed[body]:
+                    done += 1
+                    if progress:
+                        progress(f"Checking your decals: {body} {decal}", share[0] + share[1] * done / total)
+                    self.search(decal)
+                    for _, tiles in self.result_pages(max_pages=3, expect=decal):
+                        found.update((t.name, t.paint) for t in tiles if screen.normalize(t.name) != "none")
+                self.search("")
+                decals[screen.normalize(body)] = sorted([list(f) for f in found], key=lambda t: (t[0], t[1] or ""))
+        finally:
+            self.delete_own_preset(name)
+        return decals
+
+    def _equip_body_any_paint(self, body):
+        """Put this body on the temporary scan preset, in whatever paint is owned (unpainted first)."""
+        self.go_to_tab("body")
+        self.search(body)
+        for _, tiles in self.result_pages(max_pages=2, expect=body):
+            hits = [t for t in tiles if same_item(t.name, body)]
+            if hits:
+                self.click_tile(next((t for t in hits if t.paint is None), hits[0]))
+                self.equipped = {"blue": {}, "orange": {}}
+                return True
+        return False
+
+    def scan_inventory(self, needed, progress=None, decals_needed=None):
         """Check which of the needed items the user owns, by searching for each one.
         needed = {slot: [item names]}. Read-only: nothing is clicked except tabs, the search box and
         the finish lists, so the selected preset isn't changed.
@@ -1111,6 +1286,9 @@ class Garage:
         self.open_customize()
         items = {}
         total = sum(len(v) for v in needed.values())
+        # Rough share of the progress bar: decals need a body switch per body as well.
+        decal_count = sum(len(v) for v in (decals_needed or {}).values())
+        items_share = (total + 2) / (total + 2 + decal_count * 1.2) if decal_count else 1.0
         done = 0
         for slot in SCANNED_SLOTS:
             names = needed.get(slot) or []
@@ -1121,9 +1299,9 @@ class Garage:
             for name in names:
                 done += 1
                 if progress:
-                    progress(f"Checking your inventory: {name}", done / (total + 2))
+                    progress(f"Checking your inventory: {name}", items_share * done / (total + 2))
                 self.search(name)
-                for _, tiles in self.result_pages():
+                for _, tiles in self.result_pages(expect=name):
                     found.update((t.name, t.paint) for t in tiles)
             items[slot] = sorted(found, key=lambda t: (t[0], t[1] or ""))
             self.search("")  # leave the search box empty
@@ -1131,11 +1309,14 @@ class Garage:
         self.finishes = {}
         for i, part in enumerate(("primary", "accent")):
             if progress:
-                progress(f"Checking your {part} paint finishes", (total + i + 1) / (total + 2))
+                progress(f"Checking your {part} paint finishes", items_share * (total + i + 1) / (total + 2))
             self.owned_finishes(part)
         self.go_to_garage()
         self.owned = {slot: [tuple(i) for i in v] for slot, v in items.items()}
-        return {"items": {slot: [list(i) for i in v] for slot, v in items.items()}, "finishes": self.finishes}
+        decals = self.scan_decals(decals_needed, progress, (items_share, 1 - items_share)) if decals_needed else {}
+        self.decals = {body: [tuple(i) for i in v] for body, v in decals.items()}
+        return {"items": {slot: [list(i) for i in v] for slot, v in items.items()}, "finishes": self.finishes,
+                "decals": decals}
 
 
 def describe_screen(garage):

@@ -125,6 +125,13 @@ DEFAULT_ITEMS = {
 # Paint finish to use when the pro's finish isn't owned (user's choice). None = leave it as it is.
 DEFAULT_FINISH = "Glossy"
 
+# When the pro's decal isn't owned in their paint, the same decal in another owned paint is used,
+# plainest first (user's choice: plain, black, white, grey before bright colours like lime).
+DECAL_PAINT_PREFERENCE = [
+    None, "Black", "Titanium White", "Grey", "Cobalt", "Burnt Sienna", "Crimson", "Forest Green",
+    "Purple", "Sky Blue", "Pink", "Orange", "Gold", "Saffron", "Lime",
+]
+
 PAINTS = [
     "Black", "Burnt Sienna", "Cobalt", "Crimson", "Forest Green", "Gold", "Grey",
     "Lime", "Orange", "Pink", "Purple", "Saffron", "Sky Blue", "Titanium White",

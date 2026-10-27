@@ -51,6 +51,12 @@ def _img(name):
     return response
 
 
+def _inventory():
+    """The saved inventory scan, or None if there isn't one or it's from before decals were checked."""
+    inventory = store.load("inventory")
+    return inventory if inventory and "decals" in inventory else None
+
+
 class Api:
     def __init__(self):
         self._presets, self._credit = catalog.load()
@@ -65,7 +71,7 @@ class Api:
     # ---------- called from the page ----------
 
     def get_state(self):
-        inventory = store.load("inventory")
+        inventory = _inventory()
         garage_list = store.load("garage") or {}
         return {
             "presets": catalog.cards(self._presets, inventory, garage_list.get("names", [])),
@@ -119,7 +125,7 @@ class Api:
             "resolution_ok": bool(resolution and abs(resolution[0] / resolution[1] - EXPECTED_ASPECT) <= 0.02),
             "resolutions": options,
             "saved": store.load("settings"),
-            "inventory_checked": (store.load("inventory") or {}).get("checked_at"),
+            "inventory_checked": (_inventory() or {}).get("checked_at"),
         }
 
     def save_setup(self, platform, resolution, language="english", display="fullscreen"):
@@ -156,10 +162,12 @@ class Api:
         return dict(self._job)
 
     def start_scan(self):
-        needed = catalog.needed_items(self._presets)
-        count = sum(len(v) for v in needed.values())
-        return self._start("Checking your inventory", count * SECONDS_PER_SCAN_ITEM + 30,
-                           lambda g, progress: self._scan(g, needed, progress))
+        return self._start("Checking your inventory", self._scan_seconds(), self._scan)
+
+    def _scan_seconds(self):
+        items = sum(len(v) for v in catalog.needed_items(self._presets).values())
+        decals = catalog.needed_decals(self._presets)
+        return (items + sum(len(v) for v in decals.values())) * SECONDS_PER_SCAN_ITEM + len(decals) * 4 + 40
 
     def start_apply(self, ids, skip_added=True):
         chosen = [self._by_id[i] for i in ids if i in self._by_id]
@@ -177,8 +185,8 @@ class Api:
     def _prep_seconds(self, skip_added):
         """Time spent before the first preset: an inventory scan if there isn't one, and the garage check."""
         seconds = 0
-        if not store.load("inventory"):
-            seconds += sum(len(v) for v in catalog.needed_items(self._presets).values()) * SECONDS_PER_SCAN_ITEM + 30
+        if not _inventory():
+            seconds += self._scan_seconds()
         if skip_added and not self._garage_fresh():
             known = len((store.load("garage") or {}).get("names", [])) or 40
             seconds += known * SECONDS_PER_GARAGE_PRESET + 5
@@ -236,7 +244,7 @@ class Api:
             else:
                 raise garage.NavigationError("Couldn't bring Rocket League to the front. Click the game, then try again.")
             inputs.set_target_window(hwnd)
-            g = garage.Garage(hwnd, lambda text: None, garage.Options(), store.load("inventory"))
+            g = garage.Garage(hwnd, lambda text: None, garage.Options(), _inventory())
             original_scale = g.make_text_readable(progress)
             try:
                 result.update(job(g, progress) or {})
@@ -269,13 +277,15 @@ class Api:
                                  f"Set it back to {interface:.0%} (and Display Scale to {display:.0%}) in "
                                  f"Settings > Interface if you like.")
 
-    def _scan(self, g, needed, progress):
-        inventory = g.scan_inventory(needed, progress)
+    def _scan(self, g, progress):
+        inventory = g.scan_inventory(catalog.needed_items(self._presets), progress,
+                                     catalog.needed_decals(self._presets))
         inventory["checked_at"] = store.stamp()
         inventory["missing_decals"] = []  # learned again while adding presets
         store.save("inventory", inventory)
         owned = sum(len(v) for v in inventory["items"].values())
-        return {"message": f"Found {owned} matching items and "
+        decals = sum(len(v) for v in inventory["decals"].values())
+        return {"message": f"Found {owned} matching items, {decals} decals and "
                            f"{len(set().union(*inventory['finishes'].values()))} paint finishes."}
 
     def _read_garage(self, g, progress):
@@ -286,11 +296,10 @@ class Api:
 
 
     def _apply(self, g, chosen, skip_added, progress):
-        if not store.load("inventory"):
+        if not _inventory():
             # The scan tells us which bodies are missing before any preset gets created.
             progress("Checking your inventory first", 0)
-            self._scan(g, catalog.needed_items(self._presets), lambda step, f=None: progress(step))
-            g.owned = {s: [tuple(i) for i in v] for s, v in store.load("inventory")["items"].items()}
+            self._scan(g, lambda step, f=None: progress(step))
         # The garage itself is the record of what's there (so presets deleted in the game count as gone).
         # A list read in the last few minutes is reused; presets added since are appended to it.
         if skip_added and not self._garage_fresh():
@@ -324,7 +333,7 @@ class Api:
                 g.equipped = {"blue": {}, "orange": {}}  # unsure what's equipped now
                 continue
             entry.update(outcome="added", name=done["name"],
-                         swaps=[r for r in done["results"] if r["outcome"] in ("default", "skipped")])
+                         swaps=[r for r in done["results"] if r["outcome"] in ("paint", "default", "skipped")])
             garage_names.append(done["name"])
             self._remember(garage_names, g)
         progress("Done", 1)
