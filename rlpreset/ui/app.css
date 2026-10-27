@@ -65,6 +65,8 @@ body {
 }
 .btn.primary:hover:not(:disabled) { background: #4a9aff; }
 .btn.danger { background: var(--red); border-color: var(--red); color: #fff; font-weight: 600; }
+.btn.update { color: #fff; border-color: var(--orange); background: var(--orange-soft); font-weight: 600; }
+.btn.update:hover:not(:disabled) { background: rgba(255, 138, 31, 0.28); }
 .btn.danger-ghost { color: #ff8f92; border-color: rgba(255, 90, 95, 0.45); background: transparent; }
 .btn.danger-ghost:hover { background: rgba(255, 90, 95, 0.1); }
 select, input[type=text] {

@@ -21,11 +21,13 @@ Still being worked on. I will continue updating the presets database when I can.
 - If you don't own the wheels, boost, trail or goal explosion in the right paint, it uses the free
   default instead (OEM, Standard boost, Classic trail, Classic goal explosion). Missing paint
   finishes become Glossy
-- Skips presets whose car body or decal you don't own. If you own the decal in a different
-  paint, it uses that instead, plainest first (unpainted, black, white, grey)
+- If you don't own the body in the pro's paint (say a Black Fennec), it uses the plain body
+- Skips presets whose car body or decal you don't own at all. If you own the decal in a
+  different paint, it uses that instead, plainest first (unpainted, black, white, grey)
 - Shows what got swapped after each run
 - Clear all presets button, with a warning first
 - Works on Steam and Epic, any 16:9 resolution
+- Tells you when there's a new version and updates itself in one click
 - No BakkesMod needed
 
 ## How it works
@@ -40,6 +42,10 @@ Because of that:
 - To stop it, press **Stop**, hold **F8**, or push the mouse into the top-left corner of the screen
 - The game needs to be in English for now
 
+The only thing it connects to is GitHub, once when it opens, to see if there's a newer version.
+Pressing **Update** downloads the new exe from this repo's releases, checks it against the
+release's SHA-256, then swaps it in and restarts.
+
 **Adding presets never changes your existing ones.** Every pro preset goes into a new preset, and
 if a pop-up shows up that the app doesn't expect, it cancels it. The only thing that deletes
 presets is the Clear all presets button, and only after you type DELETE to confirm.
@@ -50,7 +56,7 @@ presets is the Clear all presets button, and only after you type DELETE to confi
 2. Start Rocket League and go to the main menu
 3. Run the exe and follow the setup: it detects your platform, resolution and game settings,
    you just confirm them
-4. Let it scan your inventory (about 9 minutes)
+4. Let it scan your inventory (about 3 minutes). Later scans only look for new items
 5. Pick your presets and press **Add to garage**
 
 Nothing to install. Windows 10 or 11. You can change your answers any time with the **Setup** button.
@@ -83,6 +89,7 @@ rlpreset/     the app
   garage.py     moves around the garage and equips items
   catalog.py    the preset list, filters and what you own
   store.py      your saved scan results (kept in %LOCALAPPDATA%)
+  updater.py    checks GitHub for a new version and installs it
   layout.py     where everything sits on screen
   screen.py     screenshots and text reading
   inputs.py     mouse and keyboard

@@ -10,11 +10,12 @@ import pathlib
 import re
 import threading
 import time
+import webbrowser
 
 import bottle
 import webview
 
-from . import catalog, game, garage, inputs, store
+from . import catalog, game, garage, inputs, store, updater
 
 UI_DIR = pathlib.Path(__file__).resolve().parent / "ui"
 EXPECTED_ASPECT = 16 / 9
@@ -70,6 +71,8 @@ class Api:
         self._job = {"running": False, "id": 0}
         self._garage_read_at = None  # time.monotonic() of the last garage read this session
         self._page_ready = threading.Event()
+        self._update_info = None  # the newer release found at start-up, if any
+        self._update = {"state": "idle"}  # idle / downloading / restarting / error
 
     # ---------- called from the page ----------
 
@@ -154,6 +157,47 @@ class Api:
         """The page calls this once it has drawn the presets (see _watch_start)."""
         self._page_ready.set()
         print("page ready", flush=True)
+
+    def check_update(self):
+        """Called by the page after start-up: {"version", "install"} if GitHub has a newer release."""
+        updater.clean_up()
+        try:
+            self._update_info = updater.check()
+        except Exception as e:  # offline, GitHub down, rate limited: just don't offer an update
+            print(f"update check failed: {type(e).__name__}: {e}", flush=True)
+            return None
+        info = self._update_info
+        return {"version": info["version"], "install": updater.can_install()} if info else None
+
+    def start_update(self):
+        if not self._update_info:
+            return {"ok": False, "error": "No update found."}
+        if self.is_busy() or self._update["state"] in ("downloading", "restarting"):
+            return {"ok": False, "error": "Wait for the current job to finish first."}
+        if not updater.can_install():
+            webbrowser.open(updater.RELEASES_PAGE)  # run from source: the release page instead
+            return {"ok": True, "opened": True}
+        self._update = {"state": "downloading", "fraction": 0.0}
+        threading.Thread(target=self._install_update, daemon=True).start()
+        return {"ok": True}
+
+    def get_update_progress(self):
+        return dict(self._update)
+
+    def _install_update(self):
+        try:
+            updater.install(self._update_info, lambda f: self._update.update(fraction=f))
+        except updater.UpdateError as e:
+            self._update = {"state": "error", "error": str(e)}
+            return
+        except Exception as e:
+            print(f"update failed: {type(e).__name__}: {e}", flush=True)
+            self._update = {"state": "error", "error": "The download failed. Check your internet and try again."}
+            return
+        print(f"updated to {self._update_info['version']}, restarting", flush=True)
+        self._update = {"state": "restarting"}
+        time.sleep(0.5)
+        self._window.destroy()
 
     def log_error(self, message):
         """Errors from the page go to the debug log (in the .exe, printing writes there)."""

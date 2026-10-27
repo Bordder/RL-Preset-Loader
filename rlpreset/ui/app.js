@@ -429,6 +429,7 @@ function wire() {
   $("select-none").addEventListener("click", () => { state.selected.clear(); render(); });
   $("apply-btn").addEventListener("click", confirmApply);
   $("scan-btn").addEventListener("click", () => startJob(api().start_scan()));
+  $("update-btn").addEventListener("click", startUpdate);
   $("clear-btn").addEventListener("click", confirmClear);
   $("launch-btn").addEventListener("click", async () => {
     await api().launch_game($("launcher").value);
@@ -456,6 +457,36 @@ function reportError(message) {
 window.addEventListener("error", (e) => reportError(`${e.message} (${e.filename}:${e.lineno})`));
 window.addEventListener("unhandledrejection", (e) => reportError(e.reason));
 
+// ---------- updates ----------
+
+async function checkUpdate() {
+  const info = await api().check_update();
+  if (!info) return;
+  const b = $("update-btn");
+  b.textContent = `Update to v${info.version}`;
+  b.title = info.install ? "Downloads the new version from GitHub and restarts the app" : "Opens the download page";
+  b.hidden = false;
+}
+
+async function startUpdate() {
+  const b = $("update-btn");
+  const r = await api().start_update();
+  if (!r.ok) return showMessage("Can't update", r.error);
+  if (r.opened) return;
+  b.disabled = true;
+  for (;;) {
+    const p = await api().get_update_progress();
+    if (p.state === "downloading") b.textContent = `Downloading ${Math.round(p.fraction * 100)}%`;
+    else if (p.state === "restarting") { b.textContent = "Restarting…"; return; }
+    else if (p.state === "error") {
+      b.disabled = false;
+      b.textContent = "Try update again";
+      return showMessage("Update didn't work", p.error);
+    }
+    await new Promise((res) => setTimeout(res, 300));
+  }
+}
+
 window.addEventListener("pywebviewready", async () => {
   wire();
   wireSetup();
@@ -464,6 +495,7 @@ window.addEventListener("pywebviewready", async () => {
   $("loading").hidden = true;
   $("full").hidden = false;
   api().page_ready();
+  checkUpdate();
   if (!(await api().get_setup()).saved) await openSetup();  // first run
   if ((await api().get_progress()).running) { setMini(true); watchJob(); }
 });
