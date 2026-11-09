@@ -7,4 +7,4 @@ winrt-Windows.Foundation.Collections==4!10.0.28000.2705
 winrt-Windows.Globalization==4!10.0.28000.2705
 winrt-Windows.Graphics.Imaging==4!10.0.28000.2705
 winrt-Windows.Media.Ocr==4!10.0.28000.2705
-winrt-Windows.Storage.Streams==4!10.0.28000.2705
+winrt-Windows.Storage.Streams==4!10.0.28000.2957
